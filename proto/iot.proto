@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package grpc;
+
+
+service IotService {
+  // Streaming Bidireccional
+  rpc ConnectStream(stream DataSaverUpload) returns (stream DataSaverDownload);
+}
+
+
+// =================
+// CARRIL DE SUBIDA
+// =================
+message DataSaverUpload {
+  string sender_user_id = 1;
+  string destination_id = 2;
+  int64 timestamp = 3;
+
+  oneof payload {
+    DataSaverUploadToEdge to_edge = 4;
+  }
+}
+
+
+// =================
+// CARRIL DE BAJADA
+// =================
+message DataSaverDownload {
+  string sender_user_id = 1;
+  string destination_id = 2;
+  int64 timestamp = 3;
+
+  oneof payload {
+    DataSaverDownloadFromEdge from_edge = 4;
+  }
+}
+
+message DataSaverDownloadFromEdge {
+  oneof payload {
+    Measurement measurement = 1;
+    Monitor monitor = 2;
+    AlertAir alert_air = 3;
+    AlertTh alert_th = 4;
+    SystemMetrics metrics = 5;
+  }
+}
+
+message DataSaverUploadToEdge {
+  oneof payload {
+    Heartbeat heartbeat = 1;
+  }
+}
+
+message Measurement {
+  int64 pulse_counter = 1;
+  int64 pulse_max_duration = 2;
+  float temperature = 3;
+  float humidity = 4;
+  float co2_ppm = 5;
+  uint32 sample = 6;
+  string network = 7;
+}
+
+message AlertAir {
+  float co2_initial_ppm = 1;
+  float co2_actual_ppm = 2;
+  string network = 3;
+}
+
+message AlertTh {
+  float initial_temp = 1;
+  float actual_temp = 2;
+  string network = 3;
+}
+
+message Monitor {
+  int64 mem_free = 1;
+  int64 mem_free_hm = 2;
+  int64 mem_free_block = 3;
+  int64 mem_free_internal = 4;
+  int64 stack_free_min_coll = 5;
+  int64 stack_free_min_pub = 6;
+  int64 stack_free_min_mic = 7;
+  int64 stack_free_min_th = 8;
+  int64 stack_free_min_air = 9;
+  int64 stack_free_min_mon = 10;
+  string wifi_ssid = 11;
+  int32 wifi_rssi = 12;
+  int64 active_time = 13;
+  string network = 14;
+}
+
+message Heartbeat {
+  bool beat = 1;
+}
+
+message SystemMetrics {
+  uint64 uptime_seconds = 1;
+  float cpu_usage_percent = 2;
+  float cpu_temp_celsius = 3;
+  uint64 ram_total_mb = 4;
+  uint64 ram_used_mb = 5;
+  uint64 sd_total_gb = 6;
+  uint64 sd_used_gb = 7;
+  float sd_usage_percent = 8;
+  uint64 network_rx_bytes = 9;
+  uint64 network_tx_bytes = 10;
+  int32 wifi_rssi = 11;
+  int32 wifi_signal_dbm = 12;
+}
