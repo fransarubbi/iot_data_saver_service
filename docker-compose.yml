@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: iot_postgres
+    environment:
+      POSTGRES_USER: iot_user
+      POSTGRES_PASSWORD: iot_password
+      POSTGRES_DB: iot_data
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init_db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U iot_user -d iot_data"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  iot_data_saver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: iot_data_saver_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://iot_user:iot_password@postgres:5432/iot_data
+      DB_POOL_SIZE: 10
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 50052
+      HEARTBEAT_INTERVAL_SECS: 30
+      RUST_LOG: info
+      ENVIRONMENT: development
+    ports:
+      - "50052:50052"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
