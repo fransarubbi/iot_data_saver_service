@@ -1,22 +1,19 @@
-use tokio::sync::mpsc;
+use crate::channels::domain::Channels;
 use crate::context::domain::AppContext;
-use crate::database::logic::dba_task;
-use crate::grpc::DataSaverUpload;
-use crate::grpc_service::logic::grpc_task;
-use crate::heartbeat::domain::{watchdog_timer_for_heartbeat, Event};
-use crate::heartbeat::logic::run_heartbeat;
-use crate::message::domain::Message;
-use crate::message::logic::{message_from_edge, message_to_edge};
-use crate::system::domain::{init_tracing, InternalEvent};
+use crate::database::logic::{start_dba};
+use crate::grpc_service::logic::{start_grpc};
+use crate::heartbeat::domain::{start_watchdog};
+use crate::heartbeat::logic::{start_heartbeat};
+use crate::message::logic::{start_message_download, start_message_upload};
+use crate::system::domain::{init_tracing};
 
 mod database;
 mod heartbeat;
 mod message;
 mod system;
 mod grpc_service;
-mod config;
 mod context;
-
+mod channels;
 
 pub mod grpc {
     tonic::include_proto!("grpc");
@@ -28,40 +25,28 @@ async fn main() {
 
     init_tracing();
 
-    let (heartbeat_tx_watchdog, watchdog_rx) = mpsc::channel::<Event>(10);
-    let (heartbeat_tx_msg, msg_rx) = mpsc::channel::<Message>(10);
-    let (watchdog_tx_heartbeat, heartbeat_rx) = mpsc::channel::<Event>(10);
-    let (to_edge_tx_grpc, grpc_rx) = mpsc::channel::<DataSaverUpload>(10);
-    let (from_edge_tx_dba, dba_rx) = mpsc::channel::<Message>(10);
-    let (grpc_tx_msg, msg_rx_grpc) = mpsc::channel::<InternalEvent>(10);
-
-
+    let channels = Channels::new();
     let app_context = AppContext::new().await;
 
-    tokio::spawn(run_heartbeat(heartbeat_tx_watchdog,
-                               heartbeat_tx_msg,
-                               heartbeat_rx
-    ));
+    start_heartbeat(channels.heartbeat_to_watchdog,
+                    channels.heartbeat_to_upload_message,
+                    channels.heartbeat_from_watchdog,
+                    app_context.clone());
 
-    tokio::spawn(watchdog_timer_for_heartbeat(watchdog_tx_heartbeat,
-                                              watchdog_rx
-    ));
+    start_watchdog(channels.watchdog_to_heartbeat,
+                   channels.watchdog_from_heartbeat);
 
-    tokio::spawn(message_to_edge(to_edge_tx_grpc,
-                                 msg_rx
-    ));
+    start_message_upload(channels.upload_message_to_grpc,
+                         channels.upload_message_from_heartbeat);
 
-    tokio::spawn(message_from_edge(from_edge_tx_dba,
-                                   msg_rx_grpc
-    ));
+    start_message_download(channels.download_message_to_dba,
+                           channels.download_message_from_grpc);
 
-    tokio::spawn(dba_task(dba_rx,
-                          app_context.clone()
-    ));
+    start_dba(channels.dba_from_download_message,
+              app_context.clone());
 
-    tokio::spawn(grpc_task(grpc_tx_msg,
-                           grpc_rx,
-                           app_context.clone()
-    ));
+    start_grpc(channels.grpc_to_download_message,
+               channels.grpc_from_upload_message,
+               app_context.clone())
 
 }

@@ -20,8 +20,13 @@ pub struct AppContext {
 
 impl AppContext {
     pub async fn new() -> Self {
-        let repo = Repository::create_repository("amqp://guest:guest@localhost:5672").await;
-        let system = Arc::new(System::new("a".to_string()));
+        let system = Arc::new(
+            match System::new() {
+                Ok(system) => system,
+                Err(e) => panic!("{}", e),
+            }
+        );
+        let repo = Repository::create_repository(&system.database_url, &system).await;
         Self { repo, system }
     }
 }

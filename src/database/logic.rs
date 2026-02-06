@@ -7,9 +7,9 @@ use crate::message::domain::Message;
 
 pub async fn dba_task(mut rx: mpsc::Receiver<Message>,
                       app_context: AppContext) {
-    
+
     let mut vector = TableDataVector::new();
-    
+
     while let Some(msg) = rx.recv().await {
         match msg {
             Message::Report(report) => {
@@ -39,7 +39,7 @@ pub async fn dba_task(mut rx: mpsc::Receiver<Message>,
             }
             _ => {}
         }
-        
+
         if vector.is_some_vector_full() {
             match app_context.repo.insert(vector.clone()).await {
                 Ok(_) => {}
@@ -47,4 +47,15 @@ pub async fn dba_task(mut rx: mpsc::Receiver<Message>,
             }
         }
     }
+}
+
+
+pub fn start_dba(rx_from_msg: mpsc::Receiver<Message>,
+                 app_context: AppContext) {
+
+    tokio::spawn(async move {
+        dba_task(rx_from_msg,
+                 app_context
+        ).await;
+    });
 }

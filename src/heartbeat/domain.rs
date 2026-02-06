@@ -27,3 +27,15 @@ pub async fn watchdog_timer_for_heartbeat(tx_to_fsm: mpsc::Sender<Event>,
         }
     }
 }
+
+
+pub fn start_watchdog(tx_to_heartbeat: mpsc::Sender<Event>,
+                      rx_from_heartbeat: mpsc::Receiver<Event>) {
+    
+    tokio::spawn(async move {
+        watchdog_timer_for_heartbeat(
+            tx_to_heartbeat,
+            rx_from_heartbeat
+        ).await;
+    });
+}

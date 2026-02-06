@@ -10,8 +10,7 @@ use crate::context::domain::AppContext;
 use crate::grpc::{DataSaverDownload, DataSaverUpload};
 use crate::grpc::iot_service_client::IotServiceClient;
 use crate::system::domain::{InternalEvent, ErrorType, System};
-use crate::config::grpc_service::*;
-
+use crate::system::domain::grpc_service_const::{KEEP_ALIVE_INTERVAL_SECS, KEEP_ALIVE_TIMEOUT_SECS, TIMEOUT_SECS};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum StateClient {
@@ -23,7 +22,7 @@ enum StateClient {
 
 async fn create_channel(system: &System) -> Result<Channel, ErrorType> {
 
-    let url = format!("https://{}:50052", system.host_server);
+    let url = format!("https://{}:{}", system.grpc_host, system.grpc_port);
 
     let endpoint = Channel::from_shared(url)
         .map_err(|_| ErrorType::Endpoint)?
@@ -135,4 +134,16 @@ pub async fn grpc_task(tx: mpsc::Sender<InternalEvent>,
             }
         }
     }
+}
+
+
+pub fn start_grpc(tx_to_msg: mpsc::Sender<InternalEvent>,
+                  rx_from_msg: mpsc::Receiver<DataSaverUpload>,
+                  app_context: AppContext) {
+
+    tokio::spawn(async move {
+        grpc_task(tx_to_msg,
+                  rx_from_msg,
+                  app_context).await;
+    });
 }

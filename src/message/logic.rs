@@ -6,8 +6,8 @@ use crate::grpc::{data_saver_download_from_edge, DataSaverUpload};
 use crate::grpc::data_saver_download::Payload;
 use crate::system::domain::InternalEvent;
 
-pub async fn message_to_edge(tx: mpsc::Sender<DataSaverUpload>,
-                             mut rx: mpsc::Receiver<Message>) {
+pub async fn message_upload(tx: mpsc::Sender<DataSaverUpload>,
+                            mut rx: mpsc::Receiver<Message>) {
     
     while let Some(msg) = rx.recv().await {
         match msg {
@@ -40,7 +40,7 @@ pub async fn message_to_edge(tx: mpsc::Sender<DataSaverUpload>,
 }
 
 
-pub async fn message_from_edge(tx: mpsc::Sender<Message>, 
+pub async fn message_download(tx: mpsc::Sender<Message>,
                                mut rx: mpsc::Receiver<InternalEvent>) {
 
     while let Some(msg) = rx.recv().await {
@@ -144,4 +144,26 @@ pub async fn message_from_edge(tx: mpsc::Sender<Message>,
             }
         }
     }
+}
+
+
+pub fn start_message_upload(tx_to_grpc: mpsc::Sender<DataSaverUpload>,
+                            rx_from_heartbeat: mpsc::Receiver<Message>) {
+
+    tokio::spawn(async move {
+        message_upload(tx_to_grpc,
+                       rx_from_heartbeat
+        ).await;
+    });
+}
+
+
+pub fn start_message_download(tx_to_dba: mpsc::Sender<Message>,
+                              rx_from_grpc: mpsc::Receiver<InternalEvent>) {
+
+    tokio::spawn(async move {
+        message_download(tx_to_dba,
+                         rx_from_grpc
+        ).await;
+    });
 }

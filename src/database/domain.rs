@@ -1,6 +1,5 @@
-use crate::config::postgres::BATCH_SIZE;
 use crate::message::domain::{AlertAir, AlertTh, Measurement, Monitor, SystemMetrics};
-
+use crate::system::domain::postgres::BATCH_SIZE;
 
 #[derive(Clone, Debug)]
 pub struct TableDataVector {
