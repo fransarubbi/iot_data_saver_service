@@ -902,7 +902,7 @@ dependencies = [
 
 [[package]]
 name = "iot_data_saver_service"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "dotenv",
