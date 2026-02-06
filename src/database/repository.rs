@@ -11,6 +11,7 @@ use crate::database::tables::metrics::{create_table_system_metrics, insert_syste
 use crate::database::tables::monitor::{create_table_monitor, insert_monitor};
 
 
+#[derive(Clone, Debug)]
 pub struct Repository {
     pool: PgPool,
 }
@@ -35,23 +36,11 @@ impl Repository {
     }
 
     pub async fn insert(&self, tdv: TableDataVector) -> Result<(), sqlx::Error> {
-        match tdv {
-            TableDataVector::Measurement(measurement) => {
-                insert_measurement(&self.pool, measurement).await?;
-            },
-            TableDataVector::Monitor(monitor) => {
-                insert_monitor(&self.pool, monitor).await?;
-            },
-            TableDataVector::AlertTemp(alert_temp) => {
-                insert_alert_temp(&self.pool, alert_temp).await?;
-            },
-            TableDataVector::AlertAir(alert_air) => {
-                insert_alert_air(&self.pool, alert_air).await?;
-            },
-            TableDataVector::Metric(metric) => {
-                insert_system_metrics(&self.pool, metric).await?;
-            }
-        }
+        insert_measurement(&self.pool, tdv.measurement).await?;
+        insert_monitor(&self.pool, tdv.monitor).await?;
+        insert_alert_temp(&self.pool, tdv.alert_th).await?;
+        insert_alert_air(&self.pool, tdv.alert_air).await?;
+        insert_system_metrics(&self.pool, tdv.system_metrics).await?;
         Ok(())
     }
 }
