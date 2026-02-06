@@ -23,10 +23,10 @@ pub mod grpc {
 #[tokio::main]
 async fn main() {
 
-    init_tracing();
-
     let channels = Channels::new();
     let app_context = AppContext::new().await;
+
+    init_tracing(&app_context.system);
 
     start_heartbeat(channels.heartbeat_to_watchdog,
                     channels.heartbeat_to_upload_message,

@@ -1,8 +1,18 @@
+//! Módulo de persistencia para Métricas del Sistema Edge (Hardware Health).
+//!
+//! Registra el estado físico de los dispositivos Edge (CPU, RAM, Disco, Red)
+//! para monitoreo de infraestructura.
+
+
 use sqlx::{Executor, PgPool, Postgres, QueryBuilder};
 use crate::message::domain::{SystemMetrics};
 
 
-
+/// Crea la tabla `system_metrics`.
+///
+/// # Campos Opcionales
+/// * `wifi_rssi` y `wifi_signal_dbm` son NULLABLE (`Option<i32>`) para soportar
+///   dispositivos conectados por Ethernet o sin módulo WiFi activo.
 pub async fn create_table_system_metrics(pool: &PgPool) -> Result<(), sqlx::Error> {
     pool.execute(
         r#"
@@ -32,9 +42,11 @@ pub async fn create_table_system_metrics(pool: &PgPool) -> Result<(), sqlx::Erro
 }
 
 
-pub async fn insert_system_metrics(
-    pool: &PgPool,
-    data_vec: Vec<SystemMetrics>
+/// Inserta métricas del sistema manejando automáticamente los campos opcionales.
+///
+/// Si los campos `Option` en Rust son `None`, `sqlx` insertará `NULL` en SQL.
+pub async fn insert_system_metrics(pool: &PgPool,
+                                   data_vec: Vec<SystemMetrics>
 ) -> Result<(), sqlx::Error> {
 
     if data_vec.is_empty() {

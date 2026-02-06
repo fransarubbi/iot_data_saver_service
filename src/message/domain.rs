@@ -1,3 +1,10 @@
+//! Dominio de Mensajería y Modelos de Datos.
+//!
+//! Este módulo define las estructuras de datos fundamentales que se intercambian
+//! entre los distintos componentes del sistema (Mensajes).
+//!
+
+
 use serde::{Serialize, Deserialize};
 use sqlx::FromRow;
 
@@ -105,6 +112,7 @@ pub struct SystemMetrics {
 }
 
 
+/// Wrapper que encapsula los tipos de mensajes posibles
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Message {

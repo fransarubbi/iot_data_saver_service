@@ -1,10 +1,21 @@
+//! Módulo de persistencia para Alertas de Calidad de Aire (CO2).
+//!
+//! Gestiona la creación de la tabla y la inserción eficiente de eventos críticos
+//! relacionados con la calidad del aire detectada por los sensores.
+
+
 use sqlx::{Executor, PgPool, Postgres, QueryBuilder};
 use crate::message::domain::AlertAir;
 
 
 /// Inicializa la tabla `alert_air` en la base de datos si no existe.
 ///
-/// Esta tabla almacena eventos de calidad de aire (CO2) que superan los umbrales definidos.
+/// # Schema
+/// * `id`: Serial (Auto-incremental).
+/// * `sender_user_id`: Identificador del dispositivo Hub.
+/// * `network_id`: Identificador de la red a la que está conectado el Hub.
+/// * `co2_initial_ppm`: Valor de CO2 que disparó la alerta (float).
+/// * `co2_actual_ppm`: Valor actual tras el evento.
 pub async fn create_table_alert_air(pool: &PgPool) -> Result<(), sqlx::Error>  {
     pool.execute(
         r#"
@@ -26,7 +37,8 @@ pub async fn create_table_alert_air(pool: &PgPool) -> Result<(), sqlx::Error>  {
 
 /// Realiza una inserción masiva (batch) de alertas de aire usando `QueryBuilder`.
 ///
-/// Optimizado para reducir el número de round-trips a la base de datos.
+/// Utiliza `push_values` para construir una única sentencia SQL con múltiples filas,
+/// optimizando el rendimiento de red y base de datos.
 ///
 /// # Argumentos
 /// * `pool`: Pool de conexiones a Postgres.

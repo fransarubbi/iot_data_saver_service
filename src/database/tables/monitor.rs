@@ -1,6 +1,17 @@
+//! Módulo de persistencia para Métricas del Hub (Diagnóstico).
+//!
+//! Almacena estadísticas de bajo nivel sobre el uso de memoria (Stack/Heap)
+//! de las tareas FreeRTOS en el microcontrolador.
+
+
 use sqlx::{Executor, PgPool, Postgres, QueryBuilder};
 use crate::message::domain::Monitor;
 
+
+/// Crea la tabla `monitor` con columnas para marcas de agua (watermarks) de stack.
+///
+/// Cada columna `stack_free_min_*` representa el mínimo de memoria libre alcanzado
+/// por una tarea específica, vital para detectar desbordamientos de pila.
 pub async fn create_table_monitor(pool: &PgPool) -> Result<(), sqlx::Error>  {
     pool.execute(
         r#"
@@ -31,6 +42,8 @@ pub async fn create_table_monitor(pool: &PgPool) -> Result<(), sqlx::Error>  {
     Ok(())
 }
 
+
+/// Batch insert para datos de diagnóstico de firmware.
 pub async fn insert_monitor(pool: &PgPool,
                             data_vec: Vec<Monitor>
 ) -> Result<(), sqlx::Error> {

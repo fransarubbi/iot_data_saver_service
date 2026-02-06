@@ -1,15 +1,48 @@
+//! Adaptador de mensajes entre la capa gRPC y el Dominio.
+//!
+//! Este módulo actúa como una capa de traducción (Mapper/Adapter). Su responsabilidad
+//! es convertir los tipos generados automáticamente por `tonic` (Protobuf) a los tipos
+//! de dominio internos del sistema, y viceversa.
+//!
+//! # Arquitectura
+//! Funciona mediante dos tareas asíncronas independientes (Actors):
+//! * **Upload Task:** Escucha eventos internos (Heartbeats) -> Convierte a Proto -> Envía a gRPC.
+//! * **Download Task:** Escucha eventos gRPC -> Desempaqueta `oneof` -> Convierte a Dominio -> Envía a DB/Batcher.
+
+
 use tokio::sync::{mpsc};
-use tracing::error;
+use tracing::{debug, error, info, instrument};
 use crate::message::domain::{Measurement as MeasurementMessage, Monitor as MonitorMessage, AlertAir as AlertAirMessage, 
                              AlertTh as AlertThMessage, SystemMetrics as MetricsMessage, Message, Metadata};
 use crate::grpc::{data_saver_download_from_edge, DataSaverUpload};
 use crate::grpc::data_saver_download::Payload;
 use crate::system::domain::InternalEvent;
 
+
+/// Tarea de subida: Transforma mensajes de dominio en mensajes de transporte gRPC.
+///
+/// Actualmente se encarga principalmente de enviar los **Heartbeats** generados por el sistema
+/// hacia el servidor central (In-Store Service) para mantener la conexión viva.
+///
+/// # Flujo de Datos
+/// 1. Recibe un `Message::Heartbeat` del canal interno.
+/// 2. Construye la estructura anidada requerida por el `.proto` (`DataSaverUpload` -> `Payload` -> `Heartbeat`).
+/// 3. Envía el mensaje resultante al canal de salida hacia la tarea gRPC.
+///
+/// # Argumentos
+/// * `tx`: Canal de envío hacia la tarea de red (`grpc_service`).
+/// * `rx`: Canal de recepción desde el generador de heartbeats.
+#[instrument(
+    name = "message_upload_task",
+    skip(tx, rx)
+)]
 pub async fn message_upload(tx: mpsc::Sender<DataSaverUpload>,
                             mut rx: mpsc::Receiver<Message>) {
-    
+
+    info!("Info: message_upload_task creada");
+
     while let Some(msg) = rx.recv().await {
+        debug!("Debug: ingreso un mensaje de heartbeat para enviar a gRPC");
         match msg {
             Message::Heartbeat(heartbeat) => {
                 let grpc_heartbeat = crate::grpc::Heartbeat {
@@ -31,19 +64,41 @@ pub async fn message_upload(tx: mpsc::Sender<DataSaverUpload>,
                 };
 
                 if tx.send(grpc_msg).await.is_err() {
-                    error!("Error: enviando mensaje Heartbeat");
+                    error!("Error: no se pudo enviar mensaje Heartbeat a la tarea gRPC");
                 }
             },
             _ => {}
         }
     }
+    info!("Info: message_upload_task finalizada");
 }
 
 
+/// Tarea de bajada: Transforma mensajes gRPC entrantes en mensajes de dominio.
+///
+/// Procesa el flujo de datos que llega desde el Edge (vía In-Store Service). Desempaqueta
+/// las estructuras `oneof` de Protobuf y mapea los campos a los structs definidos en `message::domain`.
+///
+/// # Tipos Soportados
+/// * `Measurement`: Datos de sensores.
+/// * `Monitor`: Diagnósticos de Hubs.
+/// * `AlertAir` y `AlertTh`: Alertas ambientales.
+/// * `Metrics`: Diagnósticos de Edges.
+///
+/// # Argumentos
+/// * `tx`: Canal de envío hacia la capa de persistencia (Database/Batcher).
+/// * `rx`: Canal de recepción de eventos desde la tarea gRPC (`InternalEvent`).
+#[instrument(
+    name = "message_download_task",
+    skip(tx, rx)
+)]
 pub async fn message_download(tx: mpsc::Sender<Message>,
-                               mut rx: mpsc::Receiver<InternalEvent>) {
+                              mut rx: mpsc::Receiver<InternalEvent>) {
+
+    info!("Info: message_download_task creada");
 
     while let Some(msg) = rx.recv().await {
+        debug!("Debug: ingreso un mensaje de datos desde el servicio gRPC");
         match msg {
             InternalEvent::IncomingMessage(msg) => {
                 let metadata = Metadata {
@@ -58,6 +113,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                             if let Some(inner) = msg_from_edge.payload {
                                 match inner {
                                     data_saver_download_from_edge::Payload::Measurement(measurement) => {
+                                        debug!("Debug: el mensaje entrante es de tipo Measurement");
                                         let msg = MeasurementMessage {
                                             metadata,
                                             network: measurement.network,
@@ -69,10 +125,11 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                             sample: measurement.sample,
                                         };
                                         if tx.send(Message::Report(msg)).await.is_err() {
-                                            error!("Error: No se pudo enviar mensaje a dba_task");
+                                            error!("Error: no se pudo enviar mensaje a dba_task");
                                         }
                                     }
                                     data_saver_download_from_edge::Payload::Monitor(monitor) => {
+                                        debug!("Debug: el mensaje entrante es de tipo Monitor");
                                         let msg = MonitorMessage {
                                             metadata,
                                             network: monitor.network,
@@ -91,10 +148,11 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                             active_time: monitor.active_time,
                                         };
                                         if tx.send(Message::Monitor(msg)).await.is_err() {
-                                            error!("Error: No se pudo enviar mensaje a dba_task");
+                                            error!("Error: no se pudo enviar mensaje a dba_task");
                                         }
                                     }
                                     data_saver_download_from_edge::Payload::AlertAir(alert_air) => {
+                                        debug!("Debug: el mensaje entrante es de tipo AlertAir");
                                         let msg = AlertAirMessage {
                                             metadata,
                                             network: alert_air.network,
@@ -102,10 +160,11 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                             co2_actual_ppm: alert_air.co2_actual_ppm,
                                         };
                                         if tx.send(Message::AlertAir(msg)).await.is_err() {
-                                            error!("Error: No se pudo enviar mensaje a dba_task");
+                                            error!("Error: no se pudo enviar mensaje a dba_task");
                                         }
                                     }
                                     data_saver_download_from_edge::Payload::AlertTh(alert_th) => {
+                                        debug!("Debug: el mensaje entrante es de tipo AlertTh");
                                         let msg = AlertThMessage {
                                             metadata,
                                             network: alert_th.network,
@@ -113,10 +172,11 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                             actual_temp: alert_th.actual_temp,
                                         };
                                         if tx.send(Message::AlertTem(msg)).await.is_err() {
-                                            error!("Error: No se pudo enviar mensaje a dba_task");
+                                            error!("Error: no se pudo enviar mensaje a dba_task");
                                         }
                                     }
                                     data_saver_download_from_edge::Payload::Metrics(metrics) => {
+                                        debug!("Debug: el mensaje entrante es de tipo SystemMetrics");
                                         let msg = MetricsMessage {
                                             metadata,
                                             uptime_seconds: metrics.uptime_seconds,
@@ -133,7 +193,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                             wifi_signal_dbm: Some(metrics.wifi_signal_dbm),
                                         };
                                         if tx.send(Message::Metrics(msg)).await.is_err() {
-                                            error!("Error: No se pudo enviar mensaje a dba_task");
+                                            error!("Error: no se pudo enviar mensaje a dba_task");
                                         }
                                     }
                                 }
@@ -144,12 +204,18 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
             }
         }
     }
+    info!("Info: message_download_task finalizada");
 }
 
 
+/// Inicializa y ejecuta la tarea de subida en un hilo de Tokio.
+///
+/// # Argumentos
+/// * `tx_to_grpc`: Canal hacia la capa de transporte.
+/// * `rx_from_heartbeat`: Canal desde el generador de eventos de dominio.
 pub fn start_message_upload(tx_to_grpc: mpsc::Sender<DataSaverUpload>,
                             rx_from_heartbeat: mpsc::Receiver<Message>) {
-
+    info!("Info: iniciando tarea message_upload");
     tokio::spawn(async move {
         message_upload(tx_to_grpc,
                        rx_from_heartbeat
@@ -158,9 +224,14 @@ pub fn start_message_upload(tx_to_grpc: mpsc::Sender<DataSaverUpload>,
 }
 
 
+/// Inicializa y ejecuta la tarea de bajada en un hilo de Tokio.
+///
+/// # Argumentos
+/// * `tx_to_dba`: Canal hacia la capa de base de datos (Batcher).
+/// * `rx_from_grpc`: Canal desde la capa de transporte.
 pub fn start_message_download(tx_to_dba: mpsc::Sender<Message>,
                               rx_from_grpc: mpsc::Receiver<InternalEvent>) {
-
+    info!("Info: iniciando tarea message_download");
     tokio::spawn(async move {
         message_download(tx_to_dba,
                          rx_from_grpc

@@ -7,7 +7,7 @@ edition = "2024"
 sqlx = { version = "0.8", features = ["postgres", "runtime-tokio", "macros"] }
 tokio = { version = "1.48", features = ["rt-multi-thread", "macros"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tonic = { version = "0.12", features = ["tls", "tls-roots", "transport", "gzip"] }
 prost = "0.13"
 tokio-stream = "0.1.17"
