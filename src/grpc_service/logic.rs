@@ -20,7 +20,7 @@ use tracing::{debug, error, info, instrument, warn};
 use std::time::Duration;
 use crate::context::domain::AppContext;
 use crate::grpc::{DataSaverDownload, DataSaverUpload};
-use crate::grpc::iot_service_client::IotServiceClient;
+use crate::grpc::data_service_client::DataServiceClient;
 use crate::system::domain::{InternalEvent, ErrorType, System};
 use crate::system::domain::grpc_service_const::{KEEP_ALIVE_INTERVAL_SECS, KEEP_ALIVE_TIMEOUT_SECS, TIMEOUT_SECS};
 
@@ -96,7 +96,7 @@ pub async fn grpc_task(tx_to_msg: mpsc::Sender<InternalEvent>,
                 match create_channel(&app_context.system).await {
                     Ok(channel) => {
                         info!("Info: canal gRPC creado correctamente");
-                        let mut grpc_client = IotServiceClient::new(channel)
+                        let mut grpc_client = DataServiceClient::new(channel)
                             .send_compressed(CompressionEncoding::Gzip)
                             .accept_compressed(CompressionEncoding::Gzip);
 

@@ -58,7 +58,7 @@ pub async fn run_heartbeat(tx_event: mpsc::Sender<Event>,
             Event::Timeout => {
                 let timestamp = Utc::now().timestamp();
                 let metadata = Metadata {
-                    sender_user_id: "DataSaver".to_string(),
+                    sender_user_id: "data_saver".to_string(),
                     destination_id: "all".to_string(),
                     timestamp
                 };
