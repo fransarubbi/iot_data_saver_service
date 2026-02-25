@@ -13,9 +13,8 @@ service DataService {
 // CARRIL DE SUBIDA
 // =================
 message DataSaverUpload {
-  string edge_id = 1;
   oneof payload {
-    DataSaverUploadToEdge to_edge = 2;
+    Heartbeat heartbeat = 1;
   }
 }
 
@@ -25,25 +24,14 @@ message DataSaverUpload {
 // =================
 message DataSaverDownload {
   oneof payload {
-    DataSaverDownloadFromEdge from_edge = 1;
-  }
-}
-
-message DataSaverDownloadFromEdge {
-  oneof payload {
     Measurement measurement = 1;
     Monitor monitor = 2;
-    SystemMetrics metrics = 3;
+    SystemMetrics metric = 3;
     AlertAir alert_air = 4;
     AlertTh alert_th = 5;
   }
 }
 
-message DataSaverUploadToEdge {
-  oneof payload {
-    Heartbeat heartbeat = 1;
-  }
-}
 
 message Metadata {
   string sender_user_id = 1;
