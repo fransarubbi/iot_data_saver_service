@@ -13,7 +13,7 @@
 
 use tokio::sync::mpsc;
 use tracing::info;
-use crate::grpc::DataSaverUpload;
+use crate::grpc::{FromDataSaver};
 use crate::heartbeat::domain::Event;
 use crate::message::domain::Message;
 use crate::system::domain::InternalEvent;
@@ -30,8 +30,8 @@ pub struct Channels {
     pub heartbeat_from_watchdog: mpsc::Receiver<Event>,
     pub heartbeat_to_upload_message: mpsc::Sender<Message>,
     pub upload_message_from_heartbeat: mpsc::Receiver<Message>,
-    pub upload_message_to_grpc: mpsc::Sender<DataSaverUpload>,
-    pub grpc_from_upload_message: mpsc::Receiver<DataSaverUpload>,
+    pub upload_message_to_grpc: mpsc::Sender<FromDataSaver>,
+    pub grpc_from_upload_message: mpsc::Receiver<FromDataSaver>,
     pub download_message_to_dba: mpsc::Sender<Message>,
     pub dba_from_download_message: mpsc::Receiver<Message>,
     pub grpc_to_download_message: mpsc::Sender<InternalEvent>,
@@ -54,7 +54,7 @@ impl Channels {
         let (h_to_w, w_from_h) = mpsc::channel::<Event>(10);
         let (w_to_h, h_from_w) = mpsc::channel::<Event>(10);
         let (h_to_um, um_from_h) = mpsc::channel::<Message>(10);
-        let (um_to_grpc, grpc_from_um) = mpsc::channel::<DataSaverUpload>(200);
+        let (um_to_grpc, grpc_from_um) = mpsc::channel::<FromDataSaver>(200);
         let (dm_to_dba, dba_from_dm) = mpsc::channel::<Message>(200);
         let (grpc_to_dm, dm_from_grpc) = mpsc::channel::<InternalEvent>(200);
 

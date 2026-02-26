@@ -15,8 +15,8 @@ use tracing::{debug, error, info, instrument, warn};
 use crate::message::domain::{Measurement as MeasurementMessage, Monitor as MonitorMessage,
                              AlertAir as AlertAirMessage, AlertTh as AlertThMessage,
                              SystemMetrics as MetricsMessage, Message, Metadata as MetadataMessage};
-use crate::grpc::{DataSaverUpload, Heartbeat, Metadata, data_saver_upload};
-use crate::grpc::data_saver_download::Payload;
+use crate::grpc::{FromDataSaver, Heartbeat, Metadata, from_data_saver};
+use crate::grpc::to_data_saver::Payload;
 use crate::system::domain::InternalEvent;
 
 
@@ -37,7 +37,7 @@ use crate::system::domain::InternalEvent;
     name = "message_upload_task",
     skip(tx, rx)
 )]
-pub async fn message_upload(tx: mpsc::Sender<DataSaverUpload>,
+pub async fn message_upload(tx: mpsc::Sender<FromDataSaver>,
                             mut rx: mpsc::Receiver<Message>) {
 
     info!("Info: message_upload_task creada");
@@ -58,8 +58,8 @@ pub async fn message_upload(tx: mpsc::Sender<DataSaverUpload>,
                     beat: heartbeat.beat,
                 };
 
-                let to_edge_payload = data_saver_upload::Payload::Heartbeat(grpc_heartbeat);
-                let to_edge_msg = DataSaverUpload {
+                let to_edge_payload = from_data_saver::Payload::Heartbeat(grpc_heartbeat);
+                let to_edge_msg = FromDataSaver {
                     payload: Some(to_edge_payload),
                 };
 
@@ -211,7 +211,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
 /// # Argumentos
 /// * `tx_to_grpc`: Canal hacia la capa de transporte.
 /// * `rx_from_heartbeat`: Canal desde el generador de eventos de dominio.
-pub fn start_message_upload(tx_to_grpc: mpsc::Sender<DataSaverUpload>,
+pub fn start_message_upload(tx_to_grpc: mpsc::Sender<FromDataSaver>,
                             rx_from_heartbeat: mpsc::Receiver<Message>) {
     info!("Info: iniciando tarea message_upload");
     tokio::spawn(async move {

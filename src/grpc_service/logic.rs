@@ -19,7 +19,7 @@ use tokio_stream::StreamExt;
 use tracing::{debug, error, info, instrument, warn};
 use std::time::Duration;
 use crate::context::domain::AppContext;
-use crate::grpc::{DataSaverDownload, DataSaverUpload};
+use crate::grpc::{ToDataSaver, FromDataSaver};
 use crate::grpc::data_service_client::DataServiceClient;
 use crate::system::domain::{InternalEvent, ErrorType, System};
 use crate::system::domain::grpc_service_const::{KEEP_ALIVE_INTERVAL_SECS, KEEP_ALIVE_TIMEOUT_SECS, TIMEOUT_SECS};
@@ -81,14 +81,14 @@ async fn create_channel(system: &System) -> Result<Channel, ErrorType> {
     skip(tx_to_msg, rx_from_server, app_context)
 )]
 pub async fn grpc_task(tx_to_msg: mpsc::Sender<InternalEvent>,
-                       mut rx_from_server: mpsc::Receiver<DataSaverUpload>,
+                       mut rx_from_server: mpsc::Receiver<FromDataSaver>,
                        app_context: AppContext) {
 
     info!("Info: grpc task creada");
 
     let mut state = StateClient::Init;
-    let mut tx_session: Option<mpsc::Sender<DataSaverUpload>> = None;
-    let mut inbound_stream: Option<tonic::Streaming<DataSaverDownload>> = None;
+    let mut tx_session: Option<mpsc::Sender<FromDataSaver>> = None;
+    let mut inbound_stream: Option<tonic::Streaming<ToDataSaver>> = None;
 
     loop {
         match state {
@@ -100,7 +100,7 @@ pub async fn grpc_task(tx_to_msg: mpsc::Sender<InternalEvent>,
                             .send_compressed(CompressionEncoding::Gzip)
                             .accept_compressed(CompressionEncoding::Gzip);
 
-                        let (tx_sess, rx_session) = mpsc::channel::<DataSaverUpload>(100);
+                        let (tx_sess, rx_session) = mpsc::channel::<FromDataSaver>(100);
                         let request = Request::new(ReceiverStream::new(rx_session));
 
                         match grpc_client.connect_stream(request).await {
@@ -187,7 +187,7 @@ pub async fn grpc_task(tx_to_msg: mpsc::Sender<InternalEvent>,
 /// * `rx_from_msg`: Canal para recibir los mensajes que deben ser enviados al servidor.
 /// * `app_context`: Contexto global de la aplicación.
 pub fn start_grpc(tx_to_msg: mpsc::Sender<InternalEvent>,
-                  rx_from_msg: mpsc::Receiver<DataSaverUpload>,
+                  rx_from_msg: mpsc::Receiver<FromDataSaver>,
                   app_context: AppContext) {
 
     info!("Info: iniciando tarea grpc");

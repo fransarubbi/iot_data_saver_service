@@ -5,14 +5,14 @@ package grpc;
 
 service DataService {
   // Streaming Bidireccional
-  rpc ConnectStream(stream DataSaverUpload) returns (stream DataSaverDownload);
+  rpc ConnectStream(stream FromDataSaver) returns (stream ToDataSaver);
 }
 
 
 // =================
 // CARRIL DE SUBIDA
 // =================
-message DataSaverUpload {
+message FromDataSaver {
   oneof payload {
     Heartbeat heartbeat = 1;
   }
@@ -22,7 +22,7 @@ message DataSaverUpload {
 // =================
 // CARRIL DE BAJADA
 // =================
-message DataSaverDownload {
+message ToDataSaver {
   oneof payload {
     Measurement measurement = 1;
     Monitor monitor = 2;

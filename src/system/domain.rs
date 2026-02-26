@@ -14,7 +14,7 @@
 use std::env;
 use tracing::info;
 use tracing_subscriber::{fmt, EnvFilter};
-use crate::grpc::DataSaverDownload;
+use crate::grpc::ToDataSaver;
 
 
 /// Representa la configuración global del sistema y el estado del entorno.
@@ -118,7 +118,7 @@ impl System {
 ///
 /// Se utiliza para desacoplar la recepción de datos gRPC de su procesamiento.
 pub enum InternalEvent {
-    IncomingMessage(DataSaverDownload)
+    IncomingMessage(ToDataSaver)
 }
 
 
