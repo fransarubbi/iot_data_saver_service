@@ -15,11 +15,11 @@ use sqlx::postgres::PgPoolOptions;
 use tracing::{debug, error, info};
 use tokio::time::sleep;
 use crate::database::domain::TableDataVector;
-use crate::database::tables::alert_air::{create_table_alert_air, insert_alert_air};
-use crate::database::tables::alert_temp::{create_table_alert_temp, insert_alert_temp};
-use crate::database::tables::measurement::{create_table_measurement, insert_measurement};
-use crate::database::tables::metrics::{create_table_system_metrics, insert_system_metrics};
-use crate::database::tables::monitor::{create_table_monitor, insert_monitor};
+use crate::database::tables::alert_air::{insert_alert_air};
+use crate::database::tables::alert_temp::{insert_alert_temp};
+use crate::database::tables::measurement::{insert_measurement};
+use crate::database::tables::metrics::{insert_system_metrics};
+use crate::database::tables::monitor::{insert_monitor};
 use crate::system::domain::database::WAIT_FOR;
 use crate::system::domain::System;
 
@@ -47,7 +47,6 @@ impl Repository {
     /// Retorna `Err` si la base de datos no está disponible inmediatamente.
     pub async fn new(system: &System) -> Result<Self, sqlx::Error> {
         let pool = create_pool(system).await?;
-        init_schema(&pool).await?;
         Ok(Self { pool })
     }
 
@@ -118,18 +117,4 @@ async fn create_pool(system: &System) -> Result<PgPool, sqlx::Error> {
         .await?;
 
     Ok(pool)
-}
-
-
-/// Helper privado para asegurar que el esquema SQL exista.
-///
-/// Ejecuta las funciones `create_table_*` de cada módulo en orden secuencial.
-async fn init_schema(pool: &PgPool) -> Result<(), sqlx::Error> {
-    info!("Info: creando schema de base de datos");
-    create_table_measurement(pool).await?;
-    create_table_monitor(pool).await?;
-    create_table_alert_temp(pool).await?;
-    create_table_alert_air(pool).await?;
-    create_table_system_metrics(pool).await?;
-    Ok(())
 }

@@ -4,35 +4,9 @@
 //! relacionados con la calidad del aire detectada por los sensores.
 
 
-use sqlx::{Executor, PgPool, Postgres, QueryBuilder};
+use sqlx::{PgPool, Postgres, QueryBuilder};
+use chrono::{DateTime};
 use crate::message::domain::AlertAir;
-
-
-/// Inicializa la tabla `alert_air` en la base de datos si no existe.
-///
-/// # Schema
-/// * `id`: Serial (Auto-incremental).
-/// * `sender_user_id`: Identificador del dispositivo Hub.
-/// * `network_id`: Identificador de la red a la que está conectado el Hub.
-/// * `co2_initial_ppm`: Valor de CO2 que disparó la alerta (float).
-/// * `co2_actual_ppm`: Valor actual tras el evento.
-pub async fn create_table_alert_air(pool: &PgPool) -> Result<(), sqlx::Error>  {
-    pool.execute(
-        r#"
-        CREATE TABLE IF NOT EXISTS alert_air (
-            id                   SERIAL PRIMARY KEY,
-            sender_user_id       TEXT NOT NULL,
-            destination_id       TEXT NOT NULL,
-            timestamp            BIGINT NOT NULL,
-            network_id           TEXT NOT NULL,
-            co2_initial_ppm      REAL NOT NULL,
-            co2_actual_ppm       REAL NOT NULL
-        );
-        "#
-    )
-        .await?;
-    Ok(())
-}
 
 
 /// Realiza una inserción masiva (batch) de alertas de aire usando `QueryBuilder`.
@@ -61,7 +35,7 @@ pub async fn insert_alert_air(pool: &PgPool,
     query_builder.push_values(data_vec, |mut b, data| {
         b.push_bind(data.metadata.sender_user_id)
             .push_bind(data.metadata.destination_id)
-            .push_bind(data.metadata.timestamp)
+            .push_bind(DateTime::from_timestamp(data.metadata.timestamp, 0).unwrap_or_default())
             .push_bind(data.network)
             .push_bind(data.co2_initial_ppm)
             .push_bind(data.co2_actual_ppm);

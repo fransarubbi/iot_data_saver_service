@@ -3,44 +3,9 @@
 //! Este módulo maneja la tabla con mayor volumen de escritura del sistema,
 //! almacenando los reportes periódicos de los sensores.
 
-
-use sqlx::{Executor, PgPool, Postgres, QueryBuilder};
+use chrono::DateTime;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use crate::message::domain::{Measurement};
-
-
-/// Inicializa la tabla `measurement`.
-///
-/// # Tipos de Datos
-/// * `id`: Serial (Auto-incremental).
-/// * `sender_user_id`: Identificador del dispositivo Hub.
-/// * `timestamp`: Marca de tiempo cuando se generó el mensaje.
-/// * `network_id`: Identificador de la red a la que está conectado el Hub.
-/// * `pulse_counter`: Contador acumulado de pulsos de sonido (BIGINT/i64).
-/// * `pulse_max_counter`: Contador acumulado de pulsos de sonido (BIGINT/i64).
-/// * `temperature`, `humidity`, `co2_ppm`: Variables ambientales (REAL/f32).
-/// * `sample`: Tiempo de sampleo del Hub (BIGINT/i64).
-pub async fn create_table_measurement(pool: &PgPool) -> Result<(), sqlx::Error>  {
-    pool.execute(
-        r#"
-        CREATE TABLE IF NOT EXISTS measurement (
-            id                   SERIAL PRIMARY KEY,
-            sender_user_id       TEXT NOT NULL,
-            destination_id       TEXT NOT NULL,
-            timestamp            BIGINT NOT NULL,
-            network_id           TEXT NOT NULL,
-            pulse_counter        BIGINT NOT NULL,
-            pulse_max_duration   BIGINT NOT NULL,
-            temperature          REAL NOT NULL,
-            humidity             REAL NOT NULL,
-            co2_ppm              REAL NOT NULL,
-            sample               BIGINT NOT NULL
-        );
-        "#
-    )
-        .await?;
-
-    Ok(())
-}
 
 
 /// Ejecuta una inserción masiva de mediciones.
@@ -67,7 +32,7 @@ pub async fn insert_measurement(pool: &PgPool,
     query_builder.push_values(data_vec, |mut b, data| {
         b.push_bind(data.metadata.sender_user_id)
             .push_bind(data.metadata.destination_id)
-            .push_bind(data.metadata.timestamp)
+            .push_bind(DateTime::from_timestamp(data.metadata.timestamp, 0).unwrap_or_default())
             .push_bind(data.network)
             .push_bind(data.pulse_counter)
             .push_bind(data.pulse_max_duration)

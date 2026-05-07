@@ -1,37 +1,9 @@
 //! Módulo de persistencia para Alertas de Temperatura y Humedad.
 //!
 
-
-use sqlx::{Executor, PgPool, Postgres, QueryBuilder};
+use chrono::DateTime;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use crate::message::domain::{AlertTh};
-
-
-/// Crea la tabla `alert_temp` para almacenar históricos de alertas térmicas.
-///
-/// # Schema
-/// * `id`: Serial (Auto-incremental).
-/// * `sender_user_id`: Identificador del dispositivo Hub.
-/// * `network_id`: Identificador de la red a la que está conectado el Hub.
-/// * `initial_temp`: Temperatura registrada al inicio de la alerta.
-/// * `actual_temp`: Temperatura actual de seguimiento.
-pub async fn create_table_alert_temp(pool: &PgPool) -> Result<(), sqlx::Error>  {
-    pool.execute(
-        r#"
-        CREATE TABLE IF NOT EXISTS alert_temp (
-            id                   SERIAL PRIMARY KEY,
-            sender_user_id       TEXT NOT NULL,
-            destination_id       TEXT NOT NULL,
-            timestamp            BIGINT NOT NULL,
-            network_id           TEXT NOT NULL,
-            initial_temp         REAL NOT NULL,
-            actual_temp          REAL NOT NULL
-        );
-        "#
-    )
-        .await?;
-
-    Ok(())
-}
 
 
 /// Inserta un lote de alertas de temperatura de forma eficiente.
@@ -56,7 +28,7 @@ pub async fn insert_alert_temp(pool: &PgPool,
     query_builder.push_values(data_vec, |mut b, data| {
         b.push_bind(data.metadata.sender_user_id)
             .push_bind(data.metadata.destination_id)
-            .push_bind(data.metadata.timestamp)
+            .push_bind(DateTime::from_timestamp(data.metadata.timestamp, 0).unwrap_or_default())
             .push_bind(data.network)
             .push_bind(data.initial_temp)
             .push_bind(data.actual_temp);

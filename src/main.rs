@@ -22,7 +22,7 @@ pub mod grpc {
 
 #[tokio::main]
 async fn main() {
-
+    
     let channels = Channels::new();
     let app_context = AppContext::new().await;
 
@@ -47,6 +47,7 @@ async fn main() {
 
     start_grpc(channels.grpc_to_download_message,
                channels.grpc_from_upload_message,
-               app_context.clone())
+               app_context.clone());
 
+    tokio::signal::ctrl_c().await.unwrap();
 }

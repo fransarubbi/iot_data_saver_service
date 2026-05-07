@@ -3,43 +3,9 @@
 //! Registra el estado físico de los dispositivos Edge (CPU, RAM, Disco, Red)
 //! para monitoreo de infraestructura.
 
-
-use sqlx::{Executor, PgPool, Postgres, QueryBuilder};
+use chrono::DateTime;
+use sqlx::{PgPool, Postgres, QueryBuilder};
 use crate::message::domain::{SystemMetrics};
-
-
-/// Crea la tabla `system_metrics`.
-///
-/// # Campos Opcionales
-/// * `wifi_rssi` y `wifi_signal_dbm` son NULLABLE (`Option<i32>`) para soportar
-///   dispositivos conectados por Ethernet o sin módulo WiFi activo.
-pub async fn create_table_system_metrics(pool: &PgPool) -> Result<(), sqlx::Error> {
-    pool.execute(
-        r#"
-        CREATE TABLE IF NOT EXISTS metric (
-            id                   SERIAL PRIMARY KEY,
-            sender_user_id       TEXT NOT NULL,
-            destination_id       TEXT NOT NULL,
-            timestamp            BIGINT NOT NULL,
-            uptime_seconds       BIGINT NOT NULL,
-            cpu_usage_percent    REAL NOT NULL,
-            cpu_temp_celsius     REAL NOT NULL,
-            ram_total_mb         BIGINT NOT NULL,
-            ram_used_mb          BIGINT NOT NULL,
-            sd_total_gb          BIGINT NOT NULL,
-            sd_used_gb           BIGINT NOT NULL,
-            sd_usage_percent     REAL NOT NULL,
-            network_rx_bytes     BIGINT NOT NULL,
-            network_tx_bytes     BIGINT NOT NULL,
-            wifi_rssi            INTEGER,
-            wifi_signal_dbm      INTEGER
-        );
-        "#
-    )
-        .await?;
-
-    Ok(())
-}
 
 
 /// Inserta métricas del sistema manejando automáticamente los campos opcionales.
@@ -65,7 +31,7 @@ pub async fn insert_system_metrics(pool: &PgPool,
     query_builder.push_values(data_vec, |mut b, data| {
         b.push_bind(data.metadata.sender_user_id)
             .push_bind(data.metadata.destination_id)
-            .push_bind(data.metadata.timestamp)
+            .push_bind(DateTime::from_timestamp(data.metadata.timestamp, 0).unwrap_or_default())
             .push_bind(data.uptime_seconds as i64)
             .push_bind(data.cpu_usage_percent)
             .push_bind(data.cpu_temp_celsius)
