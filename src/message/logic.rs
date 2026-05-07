@@ -196,7 +196,107 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     error!("Error: no se pudo enviar mensaje a dba_task");
                                 }
                             }
-                        }
+                        },
+                        Payload::MeasurementBatch(batch) => {
+                            debug!("Debug: el mensaje entrante es un MeasurementBatch");
+                            
+                            let domain_measurements: Vec<MeasurementMessage> = batch.measurements
+                                .into_iter()
+                                .filter_map(|measurement| {
+                                    // filter_map solo conserva los Some(), descartando los None
+                                    extract_metadata(measurement.metadata).map(|metadata| MeasurementMessage {
+                                        metadata,
+                                        network: measurement.network,
+                                        pulse_counter: measurement.pulse_counter,
+                                        pulse_max_duration: measurement.pulse_max_duration,
+                                        temperature: measurement.temperature,
+                                        humidity: measurement.humidity,
+                                        co2_ppm: measurement.co2_ppm,
+                                        sample: measurement.sample,
+                                    })
+                                })
+                                .collect();
+                            
+                            if !domain_measurements.is_empty() {
+                                if tx.send(Message::ReportBatch(domain_measurements)).await.is_err() {
+                                    error!("Error: no se pudo enviar MeasurementBatch a dba_task");
+                                }
+                            }
+                        },
+                        Payload::MonitorBatch(batch) => {
+                            debug!("Debug: el mensaje entrante es un MonitorBatch");
+
+                            let domain_monitors: Vec<MonitorMessage> = batch.monitors
+                                .into_iter()
+                                .filter_map(|monitor| {
+                                    extract_metadata(monitor.metadata).map(|metadata| MonitorMessage {
+                                        metadata,
+                                        network: monitor.network,
+                                        mem_free: monitor.mem_free,
+                                        mem_free_hm: monitor.mem_free_hm,
+                                        mem_free_block: monitor.mem_free_block,
+                                        mem_free_internal: monitor.mem_free_internal,
+                                        stack_free_min_coll: monitor.stack_free_min_coll,
+                                        stack_free_min_pub: monitor.stack_free_min_pub,
+                                        stack_free_min_mic: monitor.stack_free_min_mic,
+                                        stack_free_min_th: monitor.stack_free_min_th,
+                                        stack_free_min_air: monitor.stack_free_min_air,
+                                        stack_free_min_mon: monitor.stack_free_min_mon,
+                                        wifi_ssid: monitor.wifi_ssid,
+                                        wifi_rssi: monitor.wifi_rssi as i8,
+                                        active_time: monitor.active_time,
+                                    })
+                                })
+                                .collect();
+
+                            if !domain_monitors.is_empty() {
+                                if tx.send(Message::MonitorBatch(domain_monitors)).await.is_err() {
+                                    error!("Error: no se pudo enviar MonitorBatch a dba_task");
+                                }
+                            }
+                        },
+                        Payload::AlertAirBatch(batch) => {
+                            debug!("Debug: el mensaje entrante es un AlertAirBatch");
+
+                            let domain_alerts: Vec<AlertAirMessage> = batch.alerts
+                                .into_iter()
+                                .filter_map(|alert_air| {
+                                    extract_metadata(alert_air.metadata).map(|metadata| AlertAirMessage {
+                                        metadata,
+                                        network: alert_air.network,
+                                        co2_initial_ppm: alert_air.co2_initial_ppm,
+                                        co2_actual_ppm: alert_air.co2_actual_ppm,
+                                    })
+                                })
+                                .collect();
+
+                            if !domain_alerts.is_empty() {
+                                if tx.send(Message::AlertAirBatch(domain_alerts)).await.is_err() {
+                                    error!("Error: no se pudo enviar AlertAirBatch a dba_task");
+                                }
+                            }
+                        },
+                        Payload::AlertThBatch(batch) => {
+                            debug!("Debug: el mensaje entrante es un AlertThBatch");
+
+                            let domain_alerts: Vec<AlertThMessage> = batch.alerts
+                                .into_iter()
+                                .filter_map(|alert_th| {
+                                    extract_metadata(alert_th.metadata).map(|metadata| AlertThMessage {
+                                        metadata,
+                                        network: alert_th.network,
+                                        initial_temp: alert_th.initial_temp,
+                                        actual_temp: alert_th.actual_temp,
+                                    })
+                                })
+                                .collect();
+
+                            if !domain_alerts.is_empty() {
+                                if tx.send(Message::AlertTemBatch(domain_alerts)).await.is_err() {
+                                    error!("Error: no se pudo enviar AlertThBatch a dba_task");
+                                }
+                            }
+                        },
                     }
                 }
             }

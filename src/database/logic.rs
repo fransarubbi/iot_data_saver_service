@@ -74,6 +74,22 @@ pub async fn dba_task(mut rx: mpsc::Receiver<Message>,
                                 debug!("Debug: mensaje entrante AlertTh a dba task");
                                 vector.alert_th.push(alert);
                             }
+                            Message::ReportBatch(mut batch) => {
+                                debug!("Debug: mensaje entrante MeasurementBatch a dba task");
+                                vector.measurement.append(&mut batch);
+                            },
+                            Message::MonitorBatch(mut batch) => {
+                                debug!("Debug: mensaje entrante MonitorBatch a dba task");
+                                vector.monitor.append(&mut batch);
+                            },
+                            Message::AlertAirBatch(mut batch) => {
+                                debug!("Debug: mensaje entrante AlertAirBatch a dba task");
+                                vector.alert_air.append(&mut batch);
+                            },
+                            Message::AlertTemBatch(mut batch) => {
+                                debug!("Debug: mensaje entrante AlertThBatch a dba task");
+                                vector.alert_th.append(&mut batch);
+                            }
                             _ => {}
                         }
 

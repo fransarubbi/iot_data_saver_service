@@ -122,4 +122,8 @@ pub enum Message {
     AlertTem(AlertTh),
     Heartbeat(Heartbeat),
     Metrics(SystemMetrics),
+    ReportBatch(Vec<Measurement>),
+    MonitorBatch(Vec<Monitor>),
+    AlertAirBatch(Vec<AlertAir>),
+    AlertTemBatch(Vec<AlertTh>),
 }
