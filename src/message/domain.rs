@@ -116,13 +116,11 @@ pub struct SystemMetrics {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(untagged)]
 pub enum Message {
-    Report(Measurement),
     Monitor(Monitor),
     AlertAir(AlertAir),
     AlertTem(AlertTh),
     Heartbeat(Heartbeat),
     Metrics(SystemMetrics),
-    ReportBatch(Vec<Measurement>),
     MonitorBatch(Vec<Monitor>),
     AlertAirBatch(Vec<AlertAir>),
     AlertTemBatch(Vec<AlertTh>),

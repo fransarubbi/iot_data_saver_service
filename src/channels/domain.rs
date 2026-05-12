@@ -13,10 +13,12 @@
 
 use tokio::sync::mpsc;
 use tracing::info;
+use crate::bucket::logic::{BucketData, ProcessedTelemetry};
 use crate::grpc::{FromDataSaver};
 use crate::heartbeat::domain::Event;
 use crate::message::domain::Message;
 use crate::system::domain::InternalEvent;
+use crate::weather::domain::{Weather};
 
 
 /// Contenedor de todos los canales de comunicación del sistema.
@@ -32,10 +34,16 @@ pub struct Channels {
     pub upload_message_from_heartbeat: mpsc::Receiver<Message>,
     pub upload_message_to_grpc: mpsc::Sender<FromDataSaver>,
     pub grpc_from_upload_message: mpsc::Receiver<FromDataSaver>,
-    pub download_message_to_dba: mpsc::Sender<Message>,
-    pub dba_from_download_message: mpsc::Receiver<Message>,
+    pub download_message_to_bucket: mpsc::Sender<BucketData>,
+    pub bucket_from_download_message: mpsc::Receiver<BucketData>,
     pub grpc_to_download_message: mpsc::Sender<InternalEvent>,
     pub download_message_from_grpc: mpsc::Receiver<InternalEvent>,
+    pub weather_to_dba: mpsc::Sender<Weather>,
+    pub dba_from_weather: mpsc::Receiver<Weather>,
+    pub download_message_to_dba: mpsc::Sender<Message>,
+    pub dba_from_download_message: mpsc::Receiver<Message>,
+    pub sweeper_to_dba: mpsc::Sender<ProcessedTelemetry>,
+    pub dba_from_sweeper: mpsc::Receiver<ProcessedTelemetry>,
 }
 
 
@@ -51,26 +59,35 @@ impl Channels {
     ///   mejorando el rendimiento general (throughput).
     pub fn new() -> Channels {
         info!("Info: creando canales de comunicación");
-        let (h_to_w, w_from_h) = mpsc::channel::<Event>(10);
-        let (w_to_h, h_from_w) = mpsc::channel::<Event>(10);
-        let (h_to_um, um_from_h) = mpsc::channel::<Message>(10);
-        let (um_to_grpc, grpc_from_um) = mpsc::channel::<FromDataSaver>(200);
-        let (dm_to_dba, dba_from_dm) = mpsc::channel::<Message>(200);
-        let (grpc_to_dm, dm_from_grpc) = mpsc::channel::<InternalEvent>(200);
+        let (heartbeat_to_watchdog, watchdog_from_heartbeat) = mpsc::channel::<Event>(50);
+        let (watchdog_to_heartbeat, heartbeat_from_watchdog) = mpsc::channel::<Event>(50);
+        let (heartbeat_to_upload_message, upload_message_from_heartbeat) = mpsc::channel::<Message>(50);
+        let (upload_message_to_grpc, grpc_from_upload_message) = mpsc::channel::<FromDataSaver>(200);
+        let (download_message_to_bucket, bucket_from_download_message) = mpsc::channel::<BucketData>(200);
+        let (grpc_to_download_message, download_message_from_grpc) = mpsc::channel::<InternalEvent>(200);
+        let (weather_to_dba, dba_from_weather) = mpsc::channel::<Weather>(10);
+        let (sweeper_to_dba, dba_from_sweeper) = mpsc::channel::<ProcessedTelemetry>(10);
+        let (download_message_to_dba, dba_from_download_message) = mpsc::channel::<Message>(50);
 
         Self {
-            heartbeat_to_watchdog: h_to_w,
-            watchdog_from_heartbeat: w_from_h,
-            watchdog_to_heartbeat: w_to_h,
-            heartbeat_from_watchdog: h_from_w,
-            heartbeat_to_upload_message: h_to_um,
-            upload_message_from_heartbeat: um_from_h,
-            upload_message_to_grpc: um_to_grpc,
-            grpc_from_upload_message: grpc_from_um,
-            download_message_to_dba: dm_to_dba,
-            dba_from_download_message: dba_from_dm,
-            grpc_to_download_message: grpc_to_dm,
-            download_message_from_grpc: dm_from_grpc,
+            heartbeat_to_watchdog,
+            watchdog_from_heartbeat,
+            watchdog_to_heartbeat,
+            heartbeat_from_watchdog,
+            heartbeat_to_upload_message,
+            upload_message_from_heartbeat,
+            upload_message_to_grpc,
+            grpc_from_upload_message,
+            download_message_to_bucket,
+            bucket_from_download_message,
+            grpc_to_download_message,
+            download_message_from_grpc,
+            weather_to_dba,
+            dba_from_weather,
+            sweeper_to_dba,
+            dba_from_sweeper,
+            download_message_to_dba,
+            dba_from_download_message
         }
     }
 }

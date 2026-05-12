@@ -156,7 +156,6 @@ pub fn init_tracing(system: &System) {
 pub mod database {
     use tokio::time::{Duration};
     pub const WAIT_FOR: Duration = Duration::from_secs(5);
-    pub const BATCH_SIZE: usize = 100;
 }
 
 

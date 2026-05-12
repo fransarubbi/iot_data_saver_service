@@ -1,3 +1,4 @@
+use crate::bucket::logic::{start_bucket, start_sweeper};
 use crate::channels::domain::Channels;
 use crate::context::domain::AppContext;
 use crate::database::logic::{start_dba};
@@ -6,6 +7,7 @@ use crate::heartbeat::domain::{start_watchdog};
 use crate::heartbeat::logic::{start_heartbeat};
 use crate::message::logic::{start_message_download, start_message_upload};
 use crate::system::domain::{init_tracing};
+use crate::weather::logic::start_weather_worker;
 
 mod database;
 mod heartbeat;
@@ -14,6 +16,9 @@ mod system;
 mod grpc_service;
 mod context;
 mod channels;
+mod weather;
+mod alert_issuer;
+mod bucket;
 
 pub mod grpc {
     tonic::include_proto!("grpc");
@@ -39,15 +44,27 @@ async fn main() {
     start_message_upload(channels.upload_message_to_grpc,
                          channels.upload_message_from_heartbeat);
 
-    start_message_download(channels.download_message_to_dba,
-                           channels.download_message_from_grpc);
+    start_message_download(channels.download_message_to_dba, 
+                           channels.download_message_to_bucket,
+                           channels.download_message_from_grpc,
+                           app_context.clone());
 
     start_dba(channels.dba_from_download_message,
+              channels.dba_from_sweeper,
+              channels.dba_from_weather,
               app_context.clone());
 
     start_grpc(channels.grpc_to_download_message,
                channels.grpc_from_upload_message,
                app_context.clone());
+    
+    start_bucket(channels.bucket_from_download_message, 
+                 app_context.clone());
+    
+    start_sweeper(channels.sweeper_to_dba, 
+                  app_context.clone());
+    
+    start_weather_worker(channels.weather_to_dba);
 
     tokio::signal::ctrl_c().await.unwrap();
 }

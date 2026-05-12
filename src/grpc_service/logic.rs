@@ -16,7 +16,7 @@ use tonic::Request;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::StreamExt;
-use tracing::{debug, error, info, instrument, warn};
+use tracing::{error, info, instrument, warn};
 use std::time::Duration;
 use crate::context::domain::AppContext;
 use crate::grpc::{ToDataSaver, FromDataSaver};
@@ -74,8 +74,8 @@ async fn create_channel(system: &System) -> Result<Channel, ErrorType> {
 /// 3. **Error:** Limpia recursos y espera 5 segundos antes de volver a Init.
 ///
 /// # Flujo de Datos
-/// * **Upstream (Subida):** Recibe `DataSaverUpload` de `rx_from_server` y lo envía al servidor.
-/// * **Downstream (Bajada):** Recibe `DataSaverDownload` del servidor y lo envía a `tx_to_msg`.
+/// * **Upstream (Subida):** Recibe `DataSaverUpload` de `rx_from_server` y lo envía al router.
+/// * **Downstream (Bajada):** Recibe `DataSaverDownload` del router y lo envía a `tx_to_msg`.
 #[instrument(
     name = "grpc_task",
     skip(tx_to_msg, rx_from_server, app_context)
@@ -124,41 +124,41 @@ pub async fn grpc_task(tx_to_msg: mpsc::Sender<InternalEvent>,
             }
 
             StateClient::Work => {
-                if let (Some(tx_sess), Some(stream)) = (tx_session.as_ref(), inbound_stream.as_mut()) {
-                    tokio::select! {
-                        msg_opt = rx_from_server.recv() => {   // Enviar datos (Upstream)
-                            debug!("Debug: mensaje entrante a grpc desde message_upload");
-                            match msg_opt {
-                                Some(msg) => {
-                                    if let Err(e) = tx_sess.send(msg).await {
-                                        warn!("Warning: stream de envío cerrado {}", e);
-                                        state = StateClient::Error;
-                                    }
-                                }
-                                None => {
-                                    info!("Info: canal de salida cerrado, terminando tarea");
-                                    return;
-                                }
+                if let (Some(tx_sess), Some(mut stream)) = (tx_session.take(), inbound_stream.take()) {
+
+                    let tx_to_msg_clone = tx_to_msg.clone();
+
+                    let upstream = async {
+                        while let Some(msg) = rx_from_server.recv().await {
+                            if let Err(e) = tx_sess.send(msg).await {
+                                return Err(format!("Error: stream de envío local cerrado: {}", e));
                             }
                         }
+                        Ok(())
+                    };
 
-                        server_msg = stream.next() => {   // Recibir datos (Downstream)
-                            debug!("Debug: mensaje entrante a grpc para enviar a message_download");
+                    let downstream = async {
+                        while let Some(server_msg) = stream.next().await {
                             match server_msg {
-                                Some(Ok(download_msg)) => {
-                                    if tx_to_msg.send(InternalEvent::IncomingMessage(download_msg)).await.is_err() {
-                                        error!("Error: no se pudo enviar el mensaje recibido del servidor");
+                                Ok(download_msg) => {
+                                    if tx_to_msg_clone.send(InternalEvent::IncomingMessage(download_msg)).await.is_err() {
+                                        return Err("Error: fallo al enviar el mensaje al dominio interno".to_string());
                                     }
                                 }
-                                Some(Err(e)) => {
-                                    error!("Error: stream gRPC {}", e);
-                                    state = StateClient::Error;
-                                }
-                                None => {
-                                    warn!("Warning: stream cerrado por el servidor");
-                                    state = StateClient::Error;
-                                }
+                                Err(e) => return Err(format!("Error en el stream gRPC: {}", e)),
                             }
+                        }
+                        Err::<(), String>("Error: el servidor cerró el stream de bajada".to_string())
+                    };
+
+                    tokio::select! {
+                        res_up = upstream => {
+                            warn!("Warning: upstream abortado. Motivo: {:?}", res_up);
+                            state = StateClient::Error;
+                        }
+                        res_down = downstream => {
+                            warn!("Warning: downstream abortado. Motivo: {:?}", res_down);
+                            state = StateClient::Error;
                         }
                     }
                 } else {

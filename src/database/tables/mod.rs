@@ -3,3 +3,4 @@ pub mod alert_temp;
 pub mod measurement;
 pub mod metrics;
 pub mod monitor;
+pub mod weather;

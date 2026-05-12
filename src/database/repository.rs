@@ -14,14 +14,17 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use tracing::{debug, error, info};
 use tokio::time::sleep;
-use crate::database::domain::TableDataVector;
+use crate::bucket::logic::ProcessedTelemetry;
 use crate::database::tables::alert_air::{insert_alert_air};
 use crate::database::tables::alert_temp::{insert_alert_temp};
 use crate::database::tables::measurement::{insert_measurement};
 use crate::database::tables::metrics::{insert_system_metrics};
 use crate::database::tables::monitor::{insert_monitor};
+use crate::database::tables::weather::insert_weather;
+use crate::message::domain::{Message};
 use crate::system::domain::database::WAIT_FOR;
 use crate::system::domain::System;
+use crate::weather::domain::Weather;
 
 
 /// Gestor principal de persistencia.
@@ -83,23 +86,29 @@ impl Repository {
     ///
     /// # Argumentos
     /// * `tdv`: Estructura que contiene vectores de datos (`Vec<Measurement>`, `Vec<Monitor>`, etc.).
-    pub async fn insert(&self, tdv: TableDataVector) -> Result<(), sqlx::Error> {
-        debug!("Debug: insertando batch en base de datos");
-        if !tdv.measurement.is_empty() {
-            insert_measurement(&self.pool, tdv.measurement).await?;
+    pub async fn insert_message(&self, msg: Message) -> Result<(), sqlx::Error> {
+        debug!("Debug: insertando dato de tipo Message en base de datos");
+
+        match msg {
+            Message::Monitor(m) => insert_monitor(&self.pool, vec![m.clone()]).await,
+            Message::AlertAir(m) => insert_alert_air(&self.pool, vec![m.clone()]).await,
+            Message::AlertTem(m) => insert_alert_temp(&self.pool, vec![m.clone()]).await,
+            Message::Metrics(m) => insert_system_metrics(&self.pool, vec![m.clone()]).await,
+            Message::MonitorBatch(b) => insert_monitor(&self.pool, b.clone()).await,
+            Message::AlertAirBatch(b) => insert_alert_air(&self.pool, b.clone()).await,
+            Message::AlertTemBatch(b) => insert_alert_temp(&self.pool, b.clone()).await,
+
+            _ => Ok(())
         }
-        if !tdv.monitor.is_empty() {
-            insert_monitor(&self.pool, tdv.monitor).await?;
-        }
-        if !tdv.alert_th.is_empty() {
-            insert_alert_temp(&self.pool, tdv.alert_th).await?;
-        }
-        if !tdv.alert_air.is_empty() {
-            insert_alert_air(&self.pool, tdv.alert_air).await?;
-        }
-        if !tdv.system_metrics.is_empty() {
-            insert_system_metrics(&self.pool, tdv.system_metrics).await?;
-        }
+    }
+
+    pub async fn insert_telemetry(&self, telemetry: ProcessedTelemetry) -> Result<(), sqlx::Error> {
+        insert_measurement(&self.pool, telemetry).await?;
+        Ok(())
+    }
+
+    pub async fn insert_weather_data(&self, weather: Weather) -> Result<(), sqlx::Error> {
+        insert_weather(&self.pool, weather).await?;
         Ok(())
     }
 }

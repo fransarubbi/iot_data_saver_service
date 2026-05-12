@@ -9,9 +9,12 @@
 //! * **Upload Task:** Escucha eventos internos (Heartbeats) -> Convierte a Proto -> Envía a gRPC.
 //! * **Download Task:** Escucha eventos gRPC -> Desempaqueta `oneof` -> Convierte a Dominio -> Envía a DB/Batcher.
 
-
+use chrono::{DateTime, Utc};
 use tokio::sync::{mpsc};
 use tracing::{debug, error, info, instrument, warn};
+use chrono_tz::America::Buenos_Aires;
+use crate::bucket::logic::BucketData;
+use crate::context::domain::AppContext;
 use crate::message::domain::{Measurement as MeasurementMessage, Monitor as MonitorMessage,
                              AlertAir as AlertAirMessage, AlertTh as AlertThMessage,
                              SystemMetrics as MetricsMessage, Message, Metadata as MetadataMessage};
@@ -93,7 +96,9 @@ pub async fn message_upload(tx: mpsc::Sender<FromDataSaver>,
     skip(tx, rx)
 )]
 pub async fn message_download(tx: mpsc::Sender<Message>,
-                              mut rx: mpsc::Receiver<InternalEvent>) {
+                              tx_to_bucket: mpsc::Sender<BucketData>,
+                              mut rx: mpsc::Receiver<InternalEvent>,
+                              app_context: AppContext) {
 
     info!("Info: message_download_task creada");
 
@@ -116,7 +121,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     co2_ppm: measurement.co2_ppm,
                                     sample: measurement.sample,
                                 };
-                                if tx.send(Message::Report(msg)).await.is_err() {
+                                if tx_to_bucket.send(BucketData::Measurement(msg)).await.is_err() {
                                     error!("Error: no se pudo enviar mensaje a dba_task");
                                 }
                             }
@@ -148,30 +153,80 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                         },
                         Payload::AlertAir(alert_air) => {
                             debug!("Debug: el mensaje entrante es de tipo AlertAir");
+
                             if let Some(metadata) = extract_metadata(alert_air.metadata) {
+                                let meta = metadata.clone();
                                 let msg = AlertAirMessage {
                                     metadata,
-                                    network: alert_air.network,
+                                    network: alert_air.network.clone(),
                                     co2_initial_ppm: alert_air.co2_initial_ppm,
                                     co2_actual_ppm: alert_air.co2_actual_ppm,
                                 };
+
                                 if tx.send(Message::AlertAir(msg)).await.is_err() {
                                     error!("Error: no se pudo enviar mensaje a dba_task");
                                 }
+
+                                let notifier = app_context.telegram_notifier.clone();
+
+                                let msg_to_telegram = format!(
+                                    "⚠️ *ALERTA DE AIRE*\n\n\
+                                    Red: `{}`\n\
+                                    Generada: {}\n\
+                                    Recibida: {}\n\
+                                    Hub emisor: {}\n\
+                                    CO2 inicial: {}\n\
+                                    CO2 actual: {}",
+                                    alert_air.network,
+                                    format_unix_to_argentina(meta.timestamp),
+                                    time_now(),
+                                    meta.sender_user_id,
+                                    alert_air.co2_initial_ppm,
+                                    alert_air.co2_actual_ppm
+                                );
+
+                                tokio::spawn(async move {
+                                    notifier.send_alert(&msg_to_telegram).await;
+                                });
                             }
                         },
                         Payload::AlertTh(alert_th) => {
                             debug!("Debug: el mensaje entrante es de tipo AlertTh");
+
                             if let Some(metadata) = extract_metadata(alert_th.metadata) {
+                                let meta = metadata.clone();
                                 let msg = AlertThMessage {
                                     metadata,
-                                    network: alert_th.network,
+                                    network: alert_th.network.clone(),
                                     initial_temp: alert_th.initial_temp,
                                     actual_temp: alert_th.actual_temp,
                                 };
+
                                 if tx.send(Message::AlertTem(msg)).await.is_err() {
                                     error!("Error: no se pudo enviar mensaje a dba_task");
                                 }
+
+                                let notifier = app_context.telegram_notifier.clone();
+
+                                let msg_to_telegram = format!(
+                                    "⚠️ *ALERTA DE TEMPERATURA*\n\n\
+                                    Red: `{}`\n\
+                                    Generada: {}\n\
+                                    Recibida: {}\n\
+                                    Hub emisor: {}\n\
+                                    Temperatura inicial: {}\n\
+                                    Temperatura actual: {}",
+                                    alert_th.network,
+                                    format_unix_to_argentina(meta.timestamp),
+                                    time_now(),
+                                    meta.sender_user_id,
+                                    alert_th.initial_temp,
+                                    alert_th.actual_temp
+                                );
+
+                                tokio::spawn(async move {
+                                    notifier.send_alert(&msg_to_telegram).await;
+                                });
                             }
                         },
                         Payload::Metric(metrics) => {
@@ -218,7 +273,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                 .collect();
                             
                             if !domain_measurements.is_empty() {
-                                if tx.send(Message::ReportBatch(domain_measurements)).await.is_err() {
+                                if tx_to_bucket.send(BucketData::VecMeasurement(domain_measurements)).await.is_err() {
                                     error!("Error: no se pudo enviar MeasurementBatch a dba_task");
                                 }
                             }
@@ -275,6 +330,16 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     error!("Error: no se pudo enviar AlertAirBatch a dba_task");
                                 }
                             }
+
+                            let notifier = app_context.telegram_notifier.clone();
+
+                            let msg_to_telegram = "⚠️ *BATCH DE ALERTAS DE AIRE*\n\n\
+                                 Se recomienda atención.".to_string();
+
+                            tokio::spawn(async move {
+                                notifier.send_alert(&msg_to_telegram).await;
+                            });
+
                         },
                         Payload::AlertThBatch(batch) => {
                             debug!("Debug: el mensaje entrante es un AlertThBatch");
@@ -296,6 +361,15 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     error!("Error: no se pudo enviar AlertThBatch a dba_task");
                                 }
                             }
+
+                            let notifier = app_context.telegram_notifier.clone();
+
+                            let msg_to_telegram = "⚠️ *BATCH DE ALERTAS DE TEMPERATURA*\n\n\
+                                 Se recomienda atención.".to_string();
+
+                            tokio::spawn(async move {
+                                notifier.send_alert(&msg_to_telegram).await;
+                            });
                         },
                     }
                 }
@@ -303,6 +377,29 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
         }
     }
     info!("Info: message_download_task finalizada");
+}
+
+
+/// Devuelve la hora actual en Argentina formateada: DD/MM/YYYY HH:MM:SS
+pub fn time_now() -> String {
+    let argentina_tz = Buenos_Aires;
+
+    let now = Utc::now()
+        .with_timezone(&argentina_tz);
+
+    now.format("%d/%m/%Y %H:%M:%S").to_string()
+}
+
+
+/// Convierte un timestamp Unix (segundos) a formato Argentina
+pub fn format_unix_to_argentina(unix_seconds: i64) -> String {
+    let argentina_tz = Buenos_Aires;
+
+    let datetime = DateTime::from_timestamp(unix_seconds, 0)
+        .map(|dt| dt.with_timezone(&argentina_tz))
+        .unwrap_or_else(|| Utc::now().with_timezone(&argentina_tz));
+
+    datetime.format("%d/%m/%Y %H:%M:%S").to_string()
 }
 
 
@@ -328,11 +425,15 @@ pub fn start_message_upload(tx_to_grpc: mpsc::Sender<FromDataSaver>,
 /// * `tx_to_dba`: Canal hacia la capa de base de datos (Batcher).
 /// * `rx_from_grpc`: Canal desde la capa de transporte.
 pub fn start_message_download(tx_to_dba: mpsc::Sender<Message>,
-                              rx_from_grpc: mpsc::Receiver<InternalEvent>) {
+                              tx_to_bucket: mpsc::Sender<BucketData>,
+                              rx_from_grpc: mpsc::Receiver<InternalEvent>,
+                              app_context: AppContext) {
     info!("Info: iniciando tarea message_download");
     tokio::spawn(async move {
         message_download(tx_to_dba,
-                         rx_from_grpc
+                         tx_to_bucket,
+                         rx_from_grpc,
+                         app_context
         ).await;
     });
 }
