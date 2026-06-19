@@ -23,6 +23,8 @@ pub async fn insert_monitor(pool: &PgPool,
             mem_free, mem_free_hm, mem_free_block, mem_free_internal,
             stack_free_min_coll, stack_free_min_pub, stack_free_min_mic,
             stack_free_min_th, stack_free_min_air, stack_free_min_mon,
+            stack_https_handle, stack_health_handle, stack_parser_handle,
+            stack_converter_handle, stack_heartbeat_handle, stack_fsm_handle,
             wifi_ssid, wifi_rssi, active_time
         ) "
     );
@@ -42,6 +44,12 @@ pub async fn insert_monitor(pool: &PgPool,
             .push_bind(data.stack_free_min_th)
             .push_bind(data.stack_free_min_air)
             .push_bind(data.stack_free_min_mon)
+            .push_bind(data.stack_https_handle)
+            .push_bind(data.stack_health_handle)
+            .push_bind(data.stack_parser_handle)
+            .push_bind(data.stack_converter_handle)
+            .push_bind(data.stack_heartbeat_handle)
+            .push_bind(data.stack_fsm_handle)
             .push_bind(data.wifi_ssid)
             .push_bind(data.wifi_rssi as i32)
             .push_bind(data.active_time);
