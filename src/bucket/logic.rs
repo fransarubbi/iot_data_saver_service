@@ -1,17 +1,15 @@
-use tokio::sync::mpsc;
-use tokio::time::{interval, Duration};
-use std::time::{SystemTime, UNIX_EPOCH};
-use sqlx::FromRow;
-use tracing::{debug, error, info};
 use crate::context::domain::{AppContext, BucketKey};
 use crate::message::domain::Measurement;
-
+use sqlx::FromRow;
+use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::sync::mpsc;
+use tokio::time::{Duration, interval};
+use tracing::{debug, error, info};
 
 pub enum BucketData {
     Measurement(Measurement),
-    VecMeasurement(Vec<Measurement>)
+    VecMeasurement(Vec<Measurement>),
 }
-
 
 #[derive(Debug, Default)]
 pub struct ToProcess {
@@ -19,7 +17,6 @@ pub struct ToProcess {
     pub humidity: Vec<f32>,
     pub co2_ppm: Vec<f32>,
 }
-
 
 #[derive(Default, Debug, Clone, FromRow, PartialEq)]
 pub struct ProcessedTelemetry {
@@ -33,10 +30,7 @@ pub struct ProcessedTelemetry {
     pub pulse_max_duration: i64,
 }
 
-
-pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>,
-                         app_context: AppContext) {
-
+pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>, app_context: AppContext) {
     while let Some(msg) = rx.recv().await {
         match msg {
             BucketData::Measurement(measurement) => {
@@ -46,10 +40,12 @@ pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>,
                 let bucket_ts = raw_timestamp - (raw_timestamp % 50);
                 let key: BucketKey = (network_id, bucket_ts);
 
-                app_context.bucket_map.entry(key)
+                app_context
+                    .bucket_map
+                    .entry(key)
                     .or_insert_with(Vec::new)
                     .push(measurement);
-            },
+            }
             BucketData::VecMeasurement(measurements) => {
                 debug!("Debug: mensaje VecMeasurement en Bucket");
                 for measurement in measurements {
@@ -58,7 +54,9 @@ pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>,
                     let bucket_ts = raw_timestamp - (raw_timestamp % 50);
                     let key: BucketKey = (network_id, bucket_ts);
 
-                    app_context.bucket_map.entry(key)
+                    app_context
+                        .bucket_map
+                        .entry(key)
                         .or_insert_with(Vec::new)
                         .push(measurement);
                 }
@@ -67,13 +65,10 @@ pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>,
     }
 }
 
-
-pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>,
-                          app_context: AppContext) {
-
+pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context: AppContext) {
     // El temporizador se despierta cada 5 segundos
     let mut ticker = interval(Duration::from_secs(5));
-    let window_grace = 20;   // Segundos de espera para los datos
+    let window_grace = 20; // Segundos de espera para los datos
 
     loop {
         ticker.tick().await;
@@ -113,22 +108,19 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>,
                     for data in vector {
                         if data.temperature >= 10.0 && data.temperature <= 35.0 {
                             to_process.temperature.push(data.temperature);
-                        }
-                        else {
+                        } else {
                             debug!("Debug: el dato de temperatura no pasa el primer filtro.");
                         }
 
                         if data.humidity >= 20.0 && data.humidity <= 90.0 {
                             to_process.humidity.push(data.humidity);
-                        }
-                        else {
+                        } else {
                             debug!("Debug: el dato de humedad no pasa el primer filtro.");
                         }
 
-                        if data.co2_ppm >= 400.0 && data.co2_ppm <= 1800.0 {
+                        if data.co2_ppm >= 400.0 && data.co2_ppm <= 3000.0 {
                             to_process.co2_ppm.push(data.co2_ppm);
-                        }
-                        else {
+                        } else {
                             debug!("Debug: el dato de co2 no pasa el primer filtro.");
                         }
 
@@ -141,19 +133,27 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>,
 
                     if !to_process.temperature.is_empty() && to_process.temperature.len() >= 4 {
                         debug!("Debug: hay mas de 4 datos de temperatura.");
-                        to_process.temperature.sort_unstable_by(|a, b| a.total_cmp(b));
+                        to_process
+                            .temperature
+                            .sort_unstable_by(|a, b| a.total_cmp(b));
                         let quartiles_temp = quartiles(&to_process.temperature);
                         let iqr_temp = quartiles_temp.1 - quartiles_temp.0;
                         to_process.temperature.retain(|&x| {
-                            x >= quartiles_temp.0 - 1.5*iqr_temp && x <= quartiles_temp.1 + 1.5*iqr_temp
+                            x >= quartiles_temp.0 - 1.5 * iqr_temp
+                                && x <= quartiles_temp.1 + 1.5 * iqr_temp
                         });
-                        temperature = Some(to_process.temperature.iter().sum::<f32>() / to_process.temperature.len() as f32);
-                    }
-                    else if !to_process.temperature.is_empty() && to_process.temperature.len() < 4 {
+                        temperature = Some(
+                            to_process.temperature.iter().sum::<f32>()
+                                / to_process.temperature.len() as f32,
+                        );
+                    } else if !to_process.temperature.is_empty() && to_process.temperature.len() < 4
+                    {
                         debug!("Debug: hay un solo dato de temperatura.");
-                        temperature = Some(to_process.temperature.iter().sum::<f32>() / to_process.temperature.len() as f32);
-                    }
-                    else {
+                        temperature = Some(
+                            to_process.temperature.iter().sum::<f32>()
+                                / to_process.temperature.len() as f32,
+                        );
+                    } else {
                         debug!("Debug: no hay datos de temperatura luego del primer filtrado.");
                         temperature = None;
                     }
@@ -164,15 +164,20 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>,
                         let quartiles_hum = quartiles(&to_process.humidity);
                         let iqr_hum = quartiles_hum.1 - quartiles_hum.0;
                         to_process.humidity.retain(|&x| {
-                            x >= quartiles_hum.0 - 1.5*iqr_hum && x <= quartiles_hum.1 + 1.5*iqr_hum
+                            x >= quartiles_hum.0 - 1.5 * iqr_hum
+                                && x <= quartiles_hum.1 + 1.5 * iqr_hum
                         });
-                        humidity = Some(to_process.humidity.iter().sum::<f32>() / to_process.humidity.len() as f32);
-                    }
-                    else if !to_process.humidity.is_empty() && to_process.humidity.len() < 4 {
+                        humidity = Some(
+                            to_process.humidity.iter().sum::<f32>()
+                                / to_process.humidity.len() as f32,
+                        );
+                    } else if !to_process.humidity.is_empty() && to_process.humidity.len() < 4 {
                         debug!("Debug: hay un solo dato de humedad.");
-                        humidity = Some(to_process.humidity.iter().sum::<f32>() / to_process.humidity.len() as f32);
-                    }
-                    else {
+                        humidity = Some(
+                            to_process.humidity.iter().sum::<f32>()
+                                / to_process.humidity.len() as f32,
+                        );
+                    } else {
                         debug!("Debug: no hay datos de humedad luego del primer filtrado.");
                         humidity = None;
                     }
@@ -183,15 +188,20 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>,
                         let quartiles_co2 = quartiles(&to_process.co2_ppm);
                         let iqr_co2 = quartiles_co2.1 - quartiles_co2.0;
                         to_process.co2_ppm.retain(|&x| {
-                            x >= quartiles_co2.0 - 1.5*iqr_co2 && x <= quartiles_co2.1 + 1.5*iqr_co2
+                            x >= quartiles_co2.0 - 1.5 * iqr_co2
+                                && x <= quartiles_co2.1 + 1.5 * iqr_co2
                         });
-                        co2_ppm = Some(to_process.co2_ppm.iter().sum::<f32>() / to_process.co2_ppm.len() as f32);
-                    }
-                    else if !to_process.co2_ppm.is_empty() && to_process.co2_ppm.len() < 4 {
+                        co2_ppm = Some(
+                            to_process.co2_ppm.iter().sum::<f32>()
+                                / to_process.co2_ppm.len() as f32,
+                        );
+                    } else if !to_process.co2_ppm.is_empty() && to_process.co2_ppm.len() < 4 {
                         debug!("Debug: hay un solo dato de co2.");
-                        co2_ppm = Some(to_process.co2_ppm.iter().sum::<f32>() / to_process.co2_ppm.len() as f32);
-                    }
-                    else {
+                        co2_ppm = Some(
+                            to_process.co2_ppm.iter().sum::<f32>()
+                                / to_process.co2_ppm.len() as f32,
+                        );
+                    } else {
                         debug!("Debug: no hay datos de co2 luego del primer filtrado.");
                         co2_ppm = None;
                     }
@@ -203,7 +213,7 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>,
                         humidity,
                         co2_ppm,
                         pulse_counter_total: pulse_counter,
-                        pulse_max_duration
+                        pulse_max_duration,
                     };
 
                     if tx_worker.send(processed).await.is_err() {
@@ -215,13 +225,11 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>,
     }
 }
 
-
 fn quartiles(data: &[f32]) -> (f32, f32) {
     let q1 = percentile(data, 25.0);
     let q3 = percentile(data, 75.0);
     (q1, q3)
 }
-
 
 fn percentile(sorted: &[f32], percentile: f32) -> f32 {
     let index = (percentile / 100.0) * (sorted.len() as f32 - 1.0);
@@ -236,26 +244,16 @@ fn percentile(sorted: &[f32], percentile: f32) -> f32 {
     }
 }
 
-
-pub fn start_bucket(rx: mpsc::Receiver<BucketData>,
-                    app_context: AppContext) {
-
+pub fn start_bucket(rx: mpsc::Receiver<BucketData>, app_context: AppContext) {
     info!("Info: iniciando tarea bucket_task");
     tokio::spawn(async move {
-        bucket_task(rx,
-                    app_context
-        ).await;
+        bucket_task(rx, app_context).await;
     });
 }
 
-
-pub fn start_sweeper(tx_dba: mpsc::Sender<ProcessedTelemetry>,
-                     app_context: AppContext) {
-
+pub fn start_sweeper(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context: AppContext) {
     info!("Info: iniciando tarea sweeper_task");
     tokio::spawn(async move {
-        sweeper_task(tx_dba,
-                     app_context
-        ).await;
+        sweeper_task(tx_dba, app_context).await;
     });
 }
