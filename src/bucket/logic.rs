@@ -15,7 +15,7 @@ pub enum BucketData {
 pub struct ToProcess {
     pub temperature: Vec<f32>,
     pub humidity: Vec<f32>,
-    pub co2_ppm: Vec<f32>,
+    pub air_quality: Vec<f32>,
 }
 
 #[derive(Default, Debug, Clone, FromRow, PartialEq)]
@@ -25,7 +25,7 @@ pub struct ProcessedTelemetry {
     pub timestamp: i64,
     pub temperature: Option<f32>,
     pub humidity: Option<f32>,
-    pub co2_ppm: Option<f32>,
+    pub air_quality: Option<f32>,
     pub pulse_counter_total: i64,
     pub pulse_max_duration: i64,
 }
@@ -103,7 +103,7 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context:
 
                     let temperature: Option<f32>;
                     let humidity: Option<f32>;
-                    let co2_ppm: Option<f32>;
+                    let air_quality: Option<f32>;
 
                     for data in vector {
                         if data.temperature >= 10.0 && data.temperature <= 35.0 {
@@ -118,10 +118,10 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context:
                             debug!("Debug: el dato de humedad no pasa el primer filtro.");
                         }
 
-                        if data.co2_ppm >= 400.0 && data.co2_ppm <= 3000.0 {
-                            to_process.co2_ppm.push(data.co2_ppm);
+                        if data.air_quality >= 0.0 && data.air_quality <= 100.0 {
+                            to_process.air_quality.push(data.air_quality);
                         } else {
-                            debug!("Debug: el dato de co2 no pasa el primer filtro.");
+                            debug!("Debug: el dato de calidad de aire no pasa el primer filtro.");
                         }
 
                         pulse_counter += data.pulse_counter;
@@ -182,28 +182,33 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context:
                         humidity = None;
                     }
 
-                    if !to_process.co2_ppm.is_empty() && to_process.co2_ppm.len() >= 4 {
-                        debug!("Debug: hay mas de 4 datos de co2.");
-                        to_process.co2_ppm.sort_unstable_by(|a, b| a.total_cmp(b));
-                        let quartiles_co2 = quartiles(&to_process.co2_ppm);
-                        let iqr_co2 = quartiles_co2.1 - quartiles_co2.0;
-                        to_process.co2_ppm.retain(|&x| {
-                            x >= quartiles_co2.0 - 1.5 * iqr_co2
-                                && x <= quartiles_co2.1 + 1.5 * iqr_co2
+                    if !to_process.air_quality.is_empty() && to_process.air_quality.len() >= 4 {
+                        debug!("Debug: hay mas de 4 datos de calidad del aire.");
+                        to_process
+                            .air_quality
+                            .sort_unstable_by(|a, b| a.total_cmp(b));
+                        let quartiles_air = quartiles(&to_process.air_quality);
+                        let iqr_air = quartiles_air.1 - quartiles_air.0;
+                        to_process.air_quality.retain(|&x| {
+                            x >= quartiles_air.0 - 1.5 * iqr_air
+                                && x <= quartiles_air.1 + 1.5 * iqr_air
                         });
-                        co2_ppm = Some(
-                            to_process.co2_ppm.iter().sum::<f32>()
-                                / to_process.co2_ppm.len() as f32,
+                        air_quality = Some(
+                            to_process.air_quality.iter().sum::<f32>()
+                                / to_process.air_quality.len() as f32,
                         );
-                    } else if !to_process.co2_ppm.is_empty() && to_process.co2_ppm.len() < 4 {
-                        debug!("Debug: hay un solo dato de co2.");
-                        co2_ppm = Some(
-                            to_process.co2_ppm.iter().sum::<f32>()
-                                / to_process.co2_ppm.len() as f32,
+                    } else if !to_process.air_quality.is_empty() && to_process.air_quality.len() < 4
+                    {
+                        debug!("Debug: hay un solo dato de calidad del aire.");
+                        air_quality = Some(
+                            to_process.air_quality.iter().sum::<f32>()
+                                / to_process.air_quality.len() as f32,
                         );
                     } else {
-                        debug!("Debug: no hay datos de co2 luego del primer filtrado.");
-                        co2_ppm = None;
+                        debug!(
+                            "Debug: no hay datos de calidad del aire luego del primer filtrado."
+                        );
+                        air_quality = None;
                     }
 
                     let processed = ProcessedTelemetry {
@@ -211,7 +216,7 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context:
                         timestamp: key.1,
                         temperature,
                         humidity,
-                        co2_ppm,
+                        air_quality,
                         pulse_counter_total: pulse_counter,
                         pulse_max_duration,
                     };

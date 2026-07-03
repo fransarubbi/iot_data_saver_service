@@ -4,10 +4,8 @@
 //! entre los distintos componentes del sistema (Mensajes).
 //!
 
-
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-
 
 /// Metadatos estándar para todos los mensajes del sistema.
 ///
@@ -18,7 +16,6 @@ pub struct Metadata {
     pub destination_id: String,
     pub timestamp: i64,
 }
-
 
 /// Mediciones de sensores ambientales y operativos.
 ///
@@ -32,10 +29,9 @@ pub struct Measurement {
     pub pulse_max_duration: i64,
     pub temperature: f32,
     pub humidity: f32,
-    pub co2_ppm: f32,
+    pub air_quality: f32,
     pub sample: u32,
 }
-
 
 /// Alerta de calidad de aire.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, FromRow)]
@@ -43,10 +39,9 @@ pub struct AlertAir {
     #[sqlx(flatten)]
     pub metadata: Metadata,
     pub network: String,
-    pub co2_initial_ppm: f32,
-    pub co2_actual_ppm: f32,
+    pub initial_air_quality: f32,
+    pub actual_air_quality: f32,
 }
-
 
 /// Alerta de Temperatura y Humedad.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, PartialEq, FromRow)]
@@ -57,7 +52,6 @@ pub struct AlertTh {
     pub initial_temp: f32,
     pub actual_temp: f32,
 }
-
 
 /// Datos de telemetría y salud del Hub.
 ///
@@ -88,14 +82,12 @@ pub struct Monitor {
     pub active_time: i64,
 }
 
-
 /// Mensaje de latido (Heartbeat) para indicar al Edge que la API está viva.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Heartbeat {
     pub metadata: Metadata,
     pub beat: bool,
 }
-
 
 /// Datos de telemetría y salud del Edge.
 ///
@@ -116,7 +108,6 @@ pub struct SystemMetrics {
     pub wifi_rssi: Option<i32>,
     pub wifi_signal_dbm: Option<i32>,
 }
-
 
 /// Wrapper que encapsula los tipos de mensajes posibles
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

@@ -9,19 +9,20 @@
 //! * **Upload Task:** Escucha eventos internos (Heartbeats) -> Convierte a Proto -> Envía a gRPC.
 //! * **Download Task:** Escucha eventos gRPC -> Desempaqueta `oneof` -> Convierte a Dominio -> Envía a DB/Batcher.
 
-use chrono::{DateTime, Utc};
-use tokio::sync::{mpsc};
-use tracing::{debug, error, info, instrument, warn};
-use chrono_tz::America::Buenos_Aires;
 use crate::bucket::logic::BucketData;
 use crate::context::domain::AppContext;
-use crate::message::domain::{Measurement as MeasurementMessage, Monitor as MonitorMessage,
-                             AlertAir as AlertAirMessage, AlertTh as AlertThMessage,
-                             SystemMetrics as MetricsMessage, Message, Metadata as MetadataMessage};
-use crate::grpc::{FromDataSaver, Heartbeat, Metadata, from_data_saver};
 use crate::grpc::to_data_saver::Payload;
+use crate::grpc::{FromDataSaver, Heartbeat, Metadata, from_data_saver};
+use crate::message::domain::{
+    AlertAir as AlertAirMessage, AlertTh as AlertThMessage, Measurement as MeasurementMessage,
+    Message, Metadata as MetadataMessage, Monitor as MonitorMessage,
+    SystemMetrics as MetricsMessage,
+};
 use crate::system::domain::InternalEvent;
-
+use chrono::{DateTime, Utc};
+use chrono_tz::America::Buenos_Aires;
+use tokio::sync::mpsc;
+use tracing::{debug, error, info, instrument, warn};
 
 /// Tarea de subida: Transforma mensajes de dominio en mensajes de transporte gRPC.
 ///
@@ -36,20 +37,14 @@ use crate::system::domain::InternalEvent;
 /// # Argumentos
 /// * `tx`: Canal de envío hacia la tarea de red (`grpc_service`).
 /// * `rx`: Canal de recepción desde el generador de heartbeats.
-#[instrument(
-    name = "message_upload_task",
-    skip(tx, rx)
-)]
-pub async fn message_upload(tx: mpsc::Sender<FromDataSaver>,
-                            mut rx: mpsc::Receiver<Message>) {
-
+#[instrument(name = "message_upload_task", skip(tx, rx))]
+pub async fn message_upload(tx: mpsc::Sender<FromDataSaver>, mut rx: mpsc::Receiver<Message>) {
     info!("Info: message_upload_task creada");
 
     while let Some(msg) = rx.recv().await {
         debug!("Debug: ingreso un mensaje de heartbeat para enviar a gRPC");
         match msg {
             Message::Heartbeat(heartbeat) => {
-
                 let grpc_metadata = Metadata {
                     sender_user_id: heartbeat.metadata.sender_user_id,
                     destination_id: heartbeat.metadata.destination_id,
@@ -69,13 +64,12 @@ pub async fn message_upload(tx: mpsc::Sender<FromDataSaver>,
                 if tx.send(to_edge_msg).await.is_err() {
                     error!("Error: no se pudo enviar mensaje Heartbeat a la tarea gRPC");
                 }
-            },
+            }
             _ => {}
         }
     }
     info!("Info: message_upload_task finalizada");
 }
-
 
 /// Tarea de bajada: Transforma mensajes gRPC entrantes en mensajes de dominio.
 ///
@@ -91,15 +85,13 @@ pub async fn message_upload(tx: mpsc::Sender<FromDataSaver>,
 /// # Argumentos
 /// * `tx`: Canal de envío hacia la capa de persistencia (Database/Batcher).
 /// * `rx`: Canal de recepción de eventos desde la tarea gRPC (`InternalEvent`).
-#[instrument(
-    name = "message_download_task",
-    skip(tx, rx)
-)]
-pub async fn message_download(tx: mpsc::Sender<Message>,
-                              tx_to_bucket: mpsc::Sender<BucketData>,
-                              mut rx: mpsc::Receiver<InternalEvent>,
-                              app_context: AppContext) {
-
+#[instrument(name = "message_download_task", skip(tx, rx))]
+pub async fn message_download(
+    tx: mpsc::Sender<Message>,
+    tx_to_bucket: mpsc::Sender<BucketData>,
+    mut rx: mpsc::Receiver<InternalEvent>,
+    app_context: AppContext,
+) {
     info!("Info: message_download_task creada");
 
     while let Some(msg) = rx.recv().await {
@@ -107,7 +99,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
         match msg {
             InternalEvent::IncomingMessage(msg) => {
                 if let Some(payload) = msg.payload {
-                    match payload { 
+                    match payload {
                         Payload::Measurement(measurement) => {
                             debug!("Debug: el mensaje entrante es de tipo Measurement");
                             if let Some(metadata) = extract_metadata(measurement.metadata) {
@@ -118,14 +110,18 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     pulse_max_duration: measurement.pulse_max_duration,
                                     temperature: measurement.temperature,
                                     humidity: measurement.humidity,
-                                    co2_ppm: measurement.co2_ppm,
+                                    air_quality: measurement.air_quality,
                                     sample: measurement.sample,
                                 };
-                                if tx_to_bucket.send(BucketData::Measurement(msg)).await.is_err() {
+                                if tx_to_bucket
+                                    .send(BucketData::Measurement(msg))
+                                    .await
+                                    .is_err()
+                                {
                                     error!("Error: no se pudo enviar mensaje a dba_task");
                                 }
                             }
-                        },
+                        }
                         Payload::Monitor(monitor) => {
                             debug!("Debug: el mensaje entrante es de tipo Monitor");
                             if let Some(metadata) = extract_metadata(monitor.metadata) {
@@ -156,7 +152,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     error!("Error: no se pudo enviar mensaje a dba_task");
                                 }
                             }
-                        },
+                        }
                         Payload::AlertAir(alert_air) => {
                             debug!("Debug: el mensaje entrante es de tipo AlertAir");
 
@@ -165,8 +161,8 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                 let msg = AlertAirMessage {
                                     metadata,
                                     network: alert_air.network.clone(),
-                                    co2_initial_ppm: alert_air.co2_initial_ppm,
-                                    co2_actual_ppm: alert_air.co2_actual_ppm,
+                                    initial_air_quality: alert_air.initial_air_quality,
+                                    actual_air_quality: alert_air.actual_air_quality,
                                 };
 
                                 if tx.send(Message::AlertAir(msg)).await.is_err() {
@@ -181,21 +177,21 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     Generada: {}\n\
                                     Recibida: {}\n\
                                     Hub emisor: {}\n\
-                                    CO2 inicial: {}\n\
-                                    CO2 actual: {}",
+                                    Calidad de aire inicial: {}\n\
+                                    Calidad de aire actual: {}",
                                     alert_air.network,
                                     format_unix_to_argentina(meta.timestamp),
                                     time_now(),
                                     meta.sender_user_id,
-                                    alert_air.co2_initial_ppm,
-                                    alert_air.co2_actual_ppm
+                                    alert_air.initial_air_quality,
+                                    alert_air.actual_air_quality
                                 );
 
                                 tokio::spawn(async move {
                                     notifier.send_alert(&msg_to_telegram).await;
                                 });
                             }
-                        },
+                        }
                         Payload::AlertTh(alert_th) => {
                             debug!("Debug: el mensaje entrante es de tipo AlertTh");
 
@@ -234,7 +230,7 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     notifier.send_alert(&msg_to_telegram).await;
                                 });
                             }
-                        },
+                        }
                         Payload::Metric(metrics) => {
                             debug!("Debug: el mensaje entrante es de tipo SystemMetrics");
                             if let Some(metadata) = extract_metadata(metrics.metadata) {
@@ -257,88 +253,109 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                                     error!("Error: no se pudo enviar mensaje a dba_task");
                                 }
                             }
-                        },
+                        }
                         Payload::MeasurementBatch(batch) => {
                             debug!("Debug: el mensaje entrante es un MeasurementBatch");
-                            
-                            let domain_measurements: Vec<MeasurementMessage> = batch.measurements
+
+                            let domain_measurements: Vec<MeasurementMessage> = batch
+                                .measurements
                                 .into_iter()
                                 .filter_map(|measurement| {
                                     // filter_map solo conserva los Some(), descartando los None
-                                    extract_metadata(measurement.metadata).map(|metadata| MeasurementMessage {
-                                        metadata,
-                                        network: measurement.network,
-                                        pulse_counter: measurement.pulse_counter,
-                                        pulse_max_duration: measurement.pulse_max_duration,
-                                        temperature: measurement.temperature,
-                                        humidity: measurement.humidity,
-                                        co2_ppm: measurement.co2_ppm,
-                                        sample: measurement.sample,
+                                    extract_metadata(measurement.metadata).map(|metadata| {
+                                        MeasurementMessage {
+                                            metadata,
+                                            network: measurement.network,
+                                            pulse_counter: measurement.pulse_counter,
+                                            pulse_max_duration: measurement.pulse_max_duration,
+                                            temperature: measurement.temperature,
+                                            humidity: measurement.humidity,
+                                            air_quality: measurement.air_quality,
+                                            sample: measurement.sample,
+                                        }
                                     })
                                 })
                                 .collect();
-                            
+
                             if !domain_measurements.is_empty() {
-                                if tx_to_bucket.send(BucketData::VecMeasurement(domain_measurements)).await.is_err() {
+                                if tx_to_bucket
+                                    .send(BucketData::VecMeasurement(domain_measurements))
+                                    .await
+                                    .is_err()
+                                {
                                     error!("Error: no se pudo enviar MeasurementBatch a dba_task");
                                 }
                             }
-                        },
+                        }
                         Payload::MonitorBatch(batch) => {
                             debug!("Debug: el mensaje entrante es un MonitorBatch");
 
-                            let domain_monitors: Vec<MonitorMessage> = batch.monitors
+                            let domain_monitors: Vec<MonitorMessage> = batch
+                                .monitors
                                 .into_iter()
                                 .filter_map(|monitor| {
-                                    extract_metadata(monitor.metadata).map(|metadata| MonitorMessage {
-                                        metadata,
-                                        network: monitor.network,
-                                        mem_free: monitor.mem_free,
-                                        mem_free_hm: monitor.mem_free_hm,
-                                        mem_free_block: monitor.mem_free_block,
-                                        mem_free_internal: monitor.mem_free_internal,
-                                        stack_free_min_coll: monitor.stack_free_min_coll,
-                                        stack_free_min_pub: monitor.stack_free_min_pub,
-                                        stack_free_min_mic: monitor.stack_free_min_mic,
-                                        stack_free_min_th: monitor.stack_free_min_th,
-                                        stack_free_min_air: monitor.stack_free_min_air,
-                                        stack_free_min_mon: monitor.stack_free_min_mon,
-                                        stack_https_handle: monitor.stack_https_handle,
-                                        stack_health_handle: monitor.stack_health_handle,
-                                        stack_parser_handle: monitor.stack_parser_handle,
-                                        stack_converter_handle: monitor.stack_converter_handle,
-                                        stack_heartbeat_handle: monitor.stack_heartbeat_handle,
-                                        stack_fsm_handle: monitor.stack_fsm_handle,
-                                        wifi_ssid: monitor.wifi_ssid,
-                                        wifi_rssi: monitor.wifi_rssi as i8,
-                                        active_time: monitor.active_time,
+                                    extract_metadata(monitor.metadata).map(|metadata| {
+                                        MonitorMessage {
+                                            metadata,
+                                            network: monitor.network,
+                                            mem_free: monitor.mem_free,
+                                            mem_free_hm: monitor.mem_free_hm,
+                                            mem_free_block: monitor.mem_free_block,
+                                            mem_free_internal: monitor.mem_free_internal,
+                                            stack_free_min_coll: monitor.stack_free_min_coll,
+                                            stack_free_min_pub: monitor.stack_free_min_pub,
+                                            stack_free_min_mic: monitor.stack_free_min_mic,
+                                            stack_free_min_th: monitor.stack_free_min_th,
+                                            stack_free_min_air: monitor.stack_free_min_air,
+                                            stack_free_min_mon: monitor.stack_free_min_mon,
+                                            stack_https_handle: monitor.stack_https_handle,
+                                            stack_health_handle: monitor.stack_health_handle,
+                                            stack_parser_handle: monitor.stack_parser_handle,
+                                            stack_converter_handle: monitor.stack_converter_handle,
+                                            stack_heartbeat_handle: monitor.stack_heartbeat_handle,
+                                            stack_fsm_handle: monitor.stack_fsm_handle,
+                                            wifi_ssid: monitor.wifi_ssid,
+                                            wifi_rssi: monitor.wifi_rssi as i8,
+                                            active_time: monitor.active_time,
+                                        }
                                     })
                                 })
                                 .collect();
 
                             if !domain_monitors.is_empty() {
-                                if tx.send(Message::MonitorBatch(domain_monitors)).await.is_err() {
+                                if tx
+                                    .send(Message::MonitorBatch(domain_monitors))
+                                    .await
+                                    .is_err()
+                                {
                                     error!("Error: no se pudo enviar MonitorBatch a dba_task");
                                 }
                             }
-                        },
+                        }
                         Payload::AlertAirBatch(batch) => {
                             debug!("Debug: el mensaje entrante es un AlertAirBatch");
 
-                            let domain_alerts: Vec<AlertAirMessage> = batch.alerts
+                            let domain_alerts: Vec<AlertAirMessage> = batch
+                                .alerts
                                 .into_iter()
                                 .filter_map(|alert_air| {
-                                    extract_metadata(alert_air.metadata).map(|metadata| AlertAirMessage {
-                                        metadata,
-                                        network: alert_air.network,
-                                        co2_initial_ppm: alert_air.co2_initial_ppm,
-                                        co2_actual_ppm: alert_air.co2_actual_ppm,
+                                    extract_metadata(alert_air.metadata).map(|metadata| {
+                                        AlertAirMessage {
+                                            metadata,
+                                            network: alert_air.network,
+                                            initial_air_quality: alert_air.initial_air_quality,
+                                            actual_air_quality: alert_air.actual_air_quality,
+                                        }
                                     })
                                 })
                                 .collect();
 
                             if !domain_alerts.is_empty() {
-                                if tx.send(Message::AlertAirBatch(domain_alerts)).await.is_err() {
+                                if tx
+                                    .send(Message::AlertAirBatch(domain_alerts))
+                                    .await
+                                    .is_err()
+                                {
                                     error!("Error: no se pudo enviar AlertAirBatch a dba_task");
                                 }
                             }
@@ -346,30 +363,37 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                             let notifier = app_context.telegram_notifier.clone();
 
                             let msg_to_telegram = "⚠️ *BATCH DE ALERTAS DE AIRE*\n\n\
-                                 Se recomienda atención.".to_string();
+                                 Se recomienda atención."
+                                .to_string();
 
                             tokio::spawn(async move {
                                 notifier.send_alert(&msg_to_telegram).await;
                             });
-
-                        },
+                        }
                         Payload::AlertThBatch(batch) => {
                             debug!("Debug: el mensaje entrante es un AlertThBatch");
 
-                            let domain_alerts: Vec<AlertThMessage> = batch.alerts
+                            let domain_alerts: Vec<AlertThMessage> = batch
+                                .alerts
                                 .into_iter()
                                 .filter_map(|alert_th| {
-                                    extract_metadata(alert_th.metadata).map(|metadata| AlertThMessage {
-                                        metadata,
-                                        network: alert_th.network,
-                                        initial_temp: alert_th.initial_temp,
-                                        actual_temp: alert_th.actual_temp,
+                                    extract_metadata(alert_th.metadata).map(|metadata| {
+                                        AlertThMessage {
+                                            metadata,
+                                            network: alert_th.network,
+                                            initial_temp: alert_th.initial_temp,
+                                            actual_temp: alert_th.actual_temp,
+                                        }
                                     })
                                 })
                                 .collect();
 
                             if !domain_alerts.is_empty() {
-                                if tx.send(Message::AlertTemBatch(domain_alerts)).await.is_err() {
+                                if tx
+                                    .send(Message::AlertTemBatch(domain_alerts))
+                                    .await
+                                    .is_err()
+                                {
                                     error!("Error: no se pudo enviar AlertThBatch a dba_task");
                                 }
                             }
@@ -377,12 +401,13 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
                             let notifier = app_context.telegram_notifier.clone();
 
                             let msg_to_telegram = "⚠️ *BATCH DE ALERTAS DE TEMPERATURA*\n\n\
-                                 Se recomienda atención.".to_string();
+                                 Se recomienda atención."
+                                .to_string();
 
                             tokio::spawn(async move {
                                 notifier.send_alert(&msg_to_telegram).await;
                             });
-                        },
+                        }
                     }
                 }
             }
@@ -391,17 +416,14 @@ pub async fn message_download(tx: mpsc::Sender<Message>,
     info!("Info: message_download_task finalizada");
 }
 
-
 /// Devuelve la hora actual en Argentina formateada: DD/MM/YYYY HH:MM:SS
 pub fn time_now() -> String {
     let argentina_tz = Buenos_Aires;
 
-    let now = Utc::now()
-        .with_timezone(&argentina_tz);
+    let now = Utc::now().with_timezone(&argentina_tz);
 
     now.format("%d/%m/%Y %H:%M:%S").to_string()
 }
-
 
 /// Convierte un timestamp Unix (segundos) a formato Argentina
 pub fn format_unix_to_argentina(unix_seconds: i64) -> String {
@@ -414,42 +436,37 @@ pub fn format_unix_to_argentina(unix_seconds: i64) -> String {
     datetime.format("%d/%m/%Y %H:%M:%S").to_string()
 }
 
-
 /// Inicializa y ejecuta la tarea de subida en un hilo de Tokio.
 ///
 /// # Argumentos
 /// * `tx_to_grpc`: Canal hacia la capa de transporte.
 /// * `rx_from_heartbeat`: Canal desde el generador de eventos de dominio.
-pub fn start_message_upload(tx_to_grpc: mpsc::Sender<FromDataSaver>,
-                            rx_from_heartbeat: mpsc::Receiver<Message>) {
+pub fn start_message_upload(
+    tx_to_grpc: mpsc::Sender<FromDataSaver>,
+    rx_from_heartbeat: mpsc::Receiver<Message>,
+) {
     info!("Info: iniciando tarea message_upload");
     tokio::spawn(async move {
-        message_upload(tx_to_grpc,
-                       rx_from_heartbeat
-        ).await;
+        message_upload(tx_to_grpc, rx_from_heartbeat).await;
     });
 }
-
 
 /// Inicializa y ejecuta la tarea de bajada en un hilo de Tokio.
 ///
 /// # Argumentos
 /// * `tx_to_dba`: Canal hacia la capa de base de datos (Batcher).
 /// * `rx_from_grpc`: Canal desde la capa de transporte.
-pub fn start_message_download(tx_to_dba: mpsc::Sender<Message>,
-                              tx_to_bucket: mpsc::Sender<BucketData>,
-                              rx_from_grpc: mpsc::Receiver<InternalEvent>,
-                              app_context: AppContext) {
+pub fn start_message_download(
+    tx_to_dba: mpsc::Sender<Message>,
+    tx_to_bucket: mpsc::Sender<BucketData>,
+    rx_from_grpc: mpsc::Receiver<InternalEvent>,
+    app_context: AppContext,
+) {
     info!("Info: iniciando tarea message_download");
     tokio::spawn(async move {
-        message_download(tx_to_dba,
-                         tx_to_bucket,
-                         rx_from_grpc,
-                         app_context
-        ).await;
+        message_download(tx_to_dba, tx_to_bucket, rx_from_grpc, app_context).await;
     });
 }
-
 
 /// Helper privado para convertir metadatos.
 /// Recibe el Option<Metadata> de Protobuf y devuelve Metadata o None si no hay metadatos.
