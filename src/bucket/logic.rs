@@ -26,8 +26,8 @@ pub struct ProcessedTelemetry {
     pub temperature: Option<f32>,
     pub humidity: Option<f32>,
     pub air_quality: Option<f32>,
-    pub pulse_counter_total: i64,
-    pub pulse_max_duration: i64,
+    pub pulse_counter_total: f32,
+    pub pulse_max_duration: f32,
 }
 
 pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>, app_context: AppContext) {
@@ -98,8 +98,8 @@ pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context:
                 tokio::spawn(async move {
                     debug!("Debug: worker creado para procesar datos.");
                     let mut to_process = ToProcess::default();
-                    let mut pulse_max_duration: i64 = 0;
-                    let mut pulse_counter: i64 = 0;
+                    let mut pulse_max_duration: f32 = 0.0;
+                    let mut pulse_counter: f32 = 0.0;
 
                     let temperature: Option<f32>;
                     let humidity: Option<f32>;
