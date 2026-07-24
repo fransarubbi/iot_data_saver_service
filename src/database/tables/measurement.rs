@@ -19,7 +19,7 @@ pub async fn insert_measurement(
                                  temperature,
                                  humidity,
                                  air_quality)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6)
         "#,
     )
     .bind(DateTime::from_timestamp(data.timestamp, 0).unwrap_or_default())
