@@ -23,7 +23,8 @@ pub async fn insert_system_metrics(pool: &PgPool,
         "INSERT INTO metric (
             sender_user_id, destination_id, timestamp,
             uptime_seconds, cpu_usage_percent, cpu_temp_celsius,
-            ram_total_mb, ram_used_mb, sd_total_gb, sd_used_gb, sd_usage_percent,
+            ram_total_mb, ram_used_mb, ram_used_by_service_mb, 
+            sd_total_gb, sd_used_gb, sd_usage_percent,
             network_rx_bytes, network_tx_bytes, wifi_rssi, wifi_signal_dbm
         ) "
     );
@@ -37,6 +38,7 @@ pub async fn insert_system_metrics(pool: &PgPool,
             .push_bind(data.cpu_temp_celsius)
             .push_bind(data.ram_total_mb as i64)
             .push_bind(data.ram_used_mb as i64)
+            .push_bind(data.ram_used_by_service_mb as i64)
             .push_bind(data.sd_total_gb as i64)
             .push_bind(data.sd_used_gb as i64)
             .push_bind(data.sd_usage_percent)

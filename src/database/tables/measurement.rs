@@ -16,7 +16,6 @@ pub async fn insert_measurement(
         INSERT INTO measurement (timestamp,
                                  network_id,
                                  pulse_counter,
-                                 pulse_max_duration,
                                  temperature,
                                  humidity,
                                  air_quality)
@@ -26,7 +25,6 @@ pub async fn insert_measurement(
     .bind(DateTime::from_timestamp(data.timestamp, 0).unwrap_or_default())
     .bind(data.network_id)
     .bind(data.pulse_counter_total)
-    .bind(data.pulse_max_duration)
     .bind(data.temperature)
     .bind(data.humidity)
     .bind(data.air_quality)
