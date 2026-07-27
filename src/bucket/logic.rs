@@ -36,7 +36,7 @@ pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>, app_context: AppCon
                 debug!("Debug: mensaje Measurement en Bucket");
                 let network_id = measurement.network.clone();
                 let raw_timestamp = measurement.metadata.timestamp;
-                let bucket_ts = raw_timestamp - (raw_timestamp % 50);
+                let bucket_ts = raw_timestamp - (raw_timestamp % 60);
                 let key: BucketKey = (network_id, bucket_ts);
 
                 app_context
@@ -50,7 +50,7 @@ pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>, app_context: AppCon
                 for measurement in measurements {
                     let network_id = measurement.network.clone();
                     let raw_timestamp = measurement.metadata.timestamp;
-                    let bucket_ts = raw_timestamp - (raw_timestamp % 50);
+                    let bucket_ts = raw_timestamp - (raw_timestamp % 60);
                     let key: BucketKey = (network_id, bucket_ts);
 
                     app_context
@@ -67,7 +67,7 @@ pub async fn bucket_task(mut rx: mpsc::Receiver<BucketData>, app_context: AppCon
 pub async fn sweeper_task(tx_dba: mpsc::Sender<ProcessedTelemetry>, app_context: AppContext) {
     // El temporizador se despierta cada 5 segundos
     let mut ticker = interval(Duration::from_secs(5));
-    let window_grace = 20; // Segundos de espera para los datos
+    let window_grace = 60; // Segundos de espera para los datos
 
     loop {
         ticker.tick().await;
